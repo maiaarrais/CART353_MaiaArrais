@@ -209,3 +209,60 @@ main {
   background: #294d73;
   color: white;
 }
+
+.small-writing {
+  width: 360px;
+  margin: 35px 20px;
+  font-size: 19px;
+}
+
+.small-writing h2 {
+  font-size: 26px;
+  margin-bottom: 5px;
+}
+
+
+/* WEEK 3 FLOW */
+
+.flow-note {
+  width: 250px;
+  text-align: center;
+  margin: 30px;
+  font-size: 20px;
+}
+
+.flow-note p {
+  margin: 3px;
+}
+
+.flow-note span {
+  font-size: 25px;
+}
+
+.flow-note strong {
+  font-size: 23px;
+}
+
+
+/* CAFE LOOP */
+
+.cafe-loop {
+  background: white;
+
+  width: fit-content;
+  margin: 40px auto;
+  padding: 18px 25px;
+
+  border: 2px dashed #294d73;
+  border-radius: 20px;
+
+  font-size: 19px;
+}
+
+.cafe-loop span {
+  margin: 0 8px;
+}
+
+.cafe-loop b {
+  color: #294d73;
+}
