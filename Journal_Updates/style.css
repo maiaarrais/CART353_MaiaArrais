@@ -266,3 +266,62 @@ main {
 .cafe-loop b {
   color: #294d73;
 }
+
+/* PRESENTATION FILE */
+
+.presentation {
+  position: relative;
+
+  display: flex;
+  align-items: center;
+  gap: 15px;
+
+  width: 330px;
+  padding: 20px;
+
+  margin: 40px 20px;
+
+  background: #f2eee5;
+
+  border: 2px solid #294d73;
+  border-radius: 12px;
+
+  transform: rotate(-1deg);
+}
+
+.presentation h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.presentation p {
+  margin: 3px 0;
+}
+
+.presentation a {
+  color: #294d73;
+  font-size: 18px;
+}
+
+.file-icon {
+  font-size: 40px;
+}
+
+
+/* little piece of tape */
+
+.tape {
+  position: absolute;
+
+  width: 80px;
+  height: 22px;
+
+  top: -13px;
+  left: 120px;
+
+  background: #f7d98b;
+
+  opacity: 0.8;
+
+  transform: rotate(3deg);
+}
