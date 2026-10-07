@@ -10,3 +10,202 @@ body {
   font-family: "Patrick Hand", cursive;
   color: #202a33;
 }
+
+
+/* JOURNAL PAGE */
+
+main {
+  padding: 40px;
+}
+
+.week {
+  display: none;
+
+  position: relative;
+
+  width: 850px;
+  min-height: 950px;
+
+  margin: auto;
+  padding: 55px;
+
+  background-color: #fffdf8;
+
+  /* dotted paper */
+  background-image:
+    radial-gradient(#c7c7c7 1px, transparent 1px);
+
+  background-size: 20px 20px;
+
+  border-radius: 20px;
+
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+.week.active {
+  display: block;
+}
+
+
+/* TITLE */
+
+.page-title {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.page-title span {
+  letter-spacing: 4px;
+  font-size: 15px;
+}
+
+.page-title h1 {
+  font-size: 38px;
+  margin: 5px;
+}
+
+.page-title p {
+  margin: 0;
+  font-size: 18px;
+}
+
+
+/* CARDS */
+
+.card {
+  width: 330px;
+
+  padding: 22px;
+
+  margin: 20px;
+
+  border-radius: 30px;
+
+  font-size: 18px;
+}
+
+.card h2 {
+  margin-top: 0;
+  font-size: 25px;
+}
+
+.yellow {
+  background: #f7d98b;
+}
+
+.blue {
+  background: #cbdde6;
+
+  margin-left: auto;
+
+  transform: rotate(1deg);
+}
+
+.green {
+  background: #d9dfb0;
+
+  margin-left: auto;
+
+  transform: rotate(-1deg);
+}
+
+
+/* NORMAL NOTES */
+
+.notes {
+  width: 380px;
+
+  margin: 45px 20px;
+
+  font-size: 19px;
+}
+
+.notes h2 {
+  font-size: 27px;
+}
+
+.notes p {
+  margin: 7px 0;
+}
+
+
+/* DARK BLUE MESSAGE */
+
+.quote {
+  width: 250px;
+
+  margin-left: auto;
+  margin-right: 40px;
+
+  padding: 30px;
+
+  background: #294d73;
+  color: white;
+
+  border-radius: 35px;
+
+  text-align: center;
+
+  font-size: 28px;
+
+  transform: rotate(2deg);
+}
+
+
+/* BOTTOM TEXT */
+
+.bottom-text {
+  position: absolute;
+
+  bottom: 25px;
+  left: 0;
+
+  width: 100%;
+
+  text-align: center;
+
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+
+  letter-spacing: 3px;
+}
+
+
+/* WEEK TABS */
+
+.tabs {
+  position: fixed;
+
+  right: 0;
+  top: 100px;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 5px;
+}
+
+.tabs button {
+  width: 55px;
+  height: 50px;
+
+  border: none;
+
+  background: #e7ddcb;
+
+  font-family: "Patrick Hand", cursive;
+  font-size: 16px;
+
+  border-radius: 12px 0 0 12px;
+
+  cursor: pointer;
+}
+
+.tabs button:nth-child(even) {
+  background: #b8ced8;
+}
+
+.tabs button:hover {
+  background: #294d73;
+  color: white;
+}
