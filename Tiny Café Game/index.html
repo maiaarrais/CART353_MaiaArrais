@@ -1,0 +1,33 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Little Café</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Little Café</h1>
+      <p>Build the café you were asked to build.</p>
+    </header>
+
+    <section class="stats">
+      <div>Money: $<span id="money">200</span></div>
+      <div>Reputation: <span id="reputation">50</span></div>
+      <div>Satisfaction: <span id="satisfaction">70</span>%</div>
+    </section>
+
+    <canvas id="cafe" width="800" height="500"></canvas>
+
+    <section class="controls">
+      <button id="openBtn">Open Café</button>
+      <p id="message">Your café is ready!</p>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
