@@ -95,18 +95,51 @@
       <button onclick="startDay()">Open Café →</button>
     </section>
 
-    <section class="stats">
-      <div>Money: $<span id="money">200</span></div>
-      <div>Reputation: <span id="reputation">50</span></div>
-      <div>Satisfaction: <span id="satisfaction">70</span>%</div>
+    <!-- PLAY SCREEN -->
+    <section id="play" class="screen">
+      <div class="topbar">
+        <h2>☕ One Little Coffee Shop</h2>
+        <span>Day <span id="playDay"></span></span>
+      </div>
+
+      <div class="stats">
+        <div>Time: <span id="time">45</span>s</div>
+        <div>Sales: $<span id="sales">0</span></div>
+        <div>Noise: <span id="noise">0</span></div>
+        <div>Visitors: <span id="visitors">0</span></div>
+      </div>
+
+      <canvas id="cafe" width="800" height="480"></canvas>
+
+      <div class="play-controls">
+        <label for="liveMusic">
+          Music: <span id="liveMusicValue"></span>
+        </label>
+        <input id="liveMusic" type="range"
+               min="0" max="10" step="1">
+
+        <p>Click a customer's ☕ order to serve them!</p>
+      </div>
     </section>
 
-    <canvas id="cafe" width="800" height="500"></canvas>
+    <!-- REPORT SCREEN -->
+    <section id="report" class="screen">
+      <h1>End of Day <span id="reportDay"></span></h1>
 
-    <section class="controls">
-      <button id="openBtn">Open Café</button>
-      <p id="message">Your café is ready!</p>
+      <div class="paper">
+        <h2 id="resultTitle"></h2>
+        <p id="resultMessage"></p>
+
+        <h3>Today's Results</h3>
+        <p id="reportStats"></p>
+
+        <h3>What Emerged?</h3>
+        <p id="emergenceText"></p>
+      </div>
+
+      <button onclick="nextDay()">Continue →</button>
     </section>
+
   </main>
 
   <script src="script.js"></script>
