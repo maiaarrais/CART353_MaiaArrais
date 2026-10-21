@@ -9,10 +9,91 @@
 </head>
 <body>
   <main>
-    <header>
-      <h1>Little Café</h1>
-      <p>Build the café you were asked to build.</p>
-    </header>
+    <!-- START SCREEN -->
+    <section id="start" class="screen active">
+      <div class="start-card">
+        <div class="coffee-icon">☕</div>
+        <h1>One Little<br>Coffee Shop</h1>
+        <p>You design the space.<br>
+           The customers define what it becomes.</p>
+
+        <button onclick="showScreen('scenario')">
+          Play
+        </button>
+        <button class="secondary" onclick="resetGame()">
+          New Game
+        </button>
+      </div>
+    </section>
+ <!-- SCENARIO SCREEN -->
+    <section id="scenario" class="screen">
+      <h1>Today's Challenge</h1>
+
+      <div class="paper">
+        <h2 id="challengeTitle"></h2>
+        <p id="challengeDescription"></p>
+
+        <h3>Your Goals</h3>
+        <p id="challengeGoals"></p>
+      </div>
+
+      <button onclick="showScreen('setup')">
+        Design Your Café →
+      </button>
+    </section>
+
+    <!-- SETUP SCREEN -->
+    <section id="setup" class="screen">
+      <h1>Prepare Your Café</h1>
+      <p>Day <span id="dayNumber"></span></p>
+      <h2>Money: $<span id="setupMoney"></span></h2>
+
+      <div class="shop">
+        <div class="item">
+          <h3>🪑 Extra Table</h3>
+          <p>More room for customers</p>
+          <button onclick="buy('table', 40)">Buy $40</button>
+        </div>
+
+        <div class="item">
+          <h3>📶 Better Wi-Fi</h3>
+          <p>Attracts students</p>
+          <button onclick="buy('wifi', 50)">Buy $50</button>
+        </div>
+
+        <div class="item">
+          <h3>🔇 Sound Panels</h3>
+          <p>Reduce noise</p>
+          <button onclick="buy('sound', 45)">Buy $45</button>
+        </div>
+
+        <div class="item">
+          <h3>🌿 Plant</h3>
+          <p>Improves atmosphere</p>
+          <button onclick="buy('plant', 20)">Buy $20</button>
+        </div>
+      </div>
+
+      <div class="settings">
+        <h2>Café Settings</h2>
+
+        <label for="price">
+          Coffee price: $<span id="priceValue"></span>
+        </label>
+        <input type="range" id="price"
+               min="3" max="8" step="1">
+
+        <label for="music">
+          Music volume: <span id="musicValue"></span>
+        </label>
+        <input type="range" id="music"
+               min="0" max="10" step="1">
+      </div>
+
+      <p id="setupMessage"></p>
+
+      <button onclick="startDay()">Open Café →</button>
+    </section>
 
     <section class="stats">
       <div>Money: $<span id="money">200</span></div>
