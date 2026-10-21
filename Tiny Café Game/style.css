@@ -1,57 +1,171 @@
 
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
-  background: #f5eee5;
+  background: #f6efe4;
   color: #49372e;
   font-family: Georgia, serif;
 }
 
 main {
-  max-width: 900px;
-  margin: 40px auto;
-  padding: 20px;
-  text-align: center;
+  max-width: 1000px;
+  margin: auto;
+  padding: 30px 20px;
 }
 
 h1 {
-  font-size: 42px;
-  margin-bottom: 5px;
+  font-size: 38px;
 }
 
-.stats {
-  display: flex;
-  justify-content: space-around;
-  gap: 10px;
-  margin: 25px 0;
+h2 {
+  font-size: 25px;
 }
 
-.stats div {
-  background: #fffaf3;
-  padding: 15px;
-  border-radius: 10px;
+p {
+  line-height: 1.6;
 }
 
-canvas {
-  width: 100%;
-  background: #ead9bf;
-  border: 5px solid #a9896a;
-  border-radius: 12px;
-  box-sizing: border-box;
+.screen {
+  display: none;
+  text-align: center;
+}
+
+.screen.active {
+  display: block;
 }
 
 button {
-  background: #74563f;
+  background: #8ca17f;
   color: white;
   border: none;
-  border-radius: 8px;
-  padding: 12px 25px;
+  border-radius: 10px;
+  padding: 13px 25px;
+  margin: 10px;
+  font-family: inherit;
+  font-size: 16px;
   cursor: pointer;
 }
 
 button:hover {
-  background: #97745a;
+  background: #718a66;
 }
 
-.controls {
-  margin-top: 20px;
+button.secondary {
+  background: #c99581;
+}
+
+.start-card {
+  background: #fffaf3;
+  border: 2px solid #e3d7c7;
+  border-radius: 25px;
+  padding: 65px 20px;
+  margin: 60px auto;
+  max-width: 650px;
+}
+
+.coffee-icon {
+  font-size: 75px;
+}
+
+.paper {
+  background: #fffaf3;
+  border: 2px solid #e3d7c7;
+  border-radius: 18px;
+  padding: 30px;
+  margin: 30px auto;
+  max-width: 650px;
+}
+
+.shop {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+  margin: 25px 0;
+}
+
+.item {
+  background: #fffaf3;
+  padding: 20px;
+  border-radius: 14px;
+  border: 1px solid #e3d7c7;
+}
+
+.item h3 {
+  margin: 5px;
+}
+
+.settings {
+  background: #e5eadb;
+  border-radius: 14px;
+  padding: 20px;
+  margin: 20px 0;
+}
+
+.settings label {
+  display: block;
+  margin-top: 15px;
+}
+
+input[type="range"] {
+  display: block;
+  margin: 10px auto 20px;
+  width: 220px;
+  accent-color: #8ca17f;
+}
+
+.topbar,
+.stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.stats {
+  margin: 20px 0;
+}
+
+.stats div {
+  background: #fffaf3;
+  padding: 12px 18px;
+  border-radius: 10px;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 5px solid #bfa48c;
+  border-radius: 15px;
+  background: #ead9bf;
+}
+
+.play-controls {
+  background: #fffaf3;
+  border-radius: 12px;
+  padding: 10px;
+  margin-top: 15px;
+}
+
+#setupMessage {
+  color: #a3654e;
+  min-height: 24px;
+}
+
+@media (max-width: 600px) {
+  .shop {
+    grid-template-columns: 1fr;
+  }
+
+  h1 {
+    font-size: 30px;
+  }
+
+  main {
+    padding: 15px;
+  }
 }
