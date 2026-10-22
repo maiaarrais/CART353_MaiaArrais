@@ -1,372 +1,373 @@
 
-const canvas = document.getElementById("cafe");
-const ctx = canvas.getContext("2d");
+// Starting café
+const startingCafe = {
+  budget: 150,
+  tables: 3,
+  wifi: 0,
+  sound: 0,
+  plants: 0,
+  price: 5,
+  music: 3
+};
 
-// Daily challenges
-const challenges = [
-  {
-    title: "First Opening",
-    description: "Open a welcoming neighborhood café.",
-    sales: 30,
-    satisfaction: 60
-  },
-  {
-    title: "The Lunch Rush",
-    description: "Handle more customers during a busy afternoon.",
-    sales: 55,
-    satisfaction: 60
-  },
-  {
-    title: "The Study Crowd",
-    description: "Create a comfortable café for studying.",
-    sales: 65,
-    satisfaction: 70
-  }
-];
+// Load saved café or start a new one
+let cafe;
 
-// Saved café
-function newCafe() {
-  return {
-    day: 1,
-    money: 170,
-    unlocked: 0,
-    tables: 3,
-    wifi: 0,
-    sound: 0,
-    plants: 0,
-    price: 5,
-    music: 3
+try {
+  cafe = JSON.parse(localStorage.getItem("cafeSave")) || {
+    ...startingCafe
   };
+} catch {
+  cafe = { ...startingCafe };
 }
 
-let cafe = loadCafe();
+function saveGame() {
+  localStorage.setItem("cafeSave", JSON.stringify(cafe));
+}
 
-function loadCafe() {
-  try {
-    return JSON.parse(localStorage.getItem("littleCafe")) || newCafe();
-  } catch {
-    return newCafe();
+// Change screens
+function showScreen(screenName) {
+  const selectedScreen = document.getElementById(screenName);
+
+  if (!selectedScreen) {
+    document.getElementById("message").textContent =
+      "The café play screen is not available yet.";
+    return;
   }
-}
 
-function saveCafe() {
-  localStorage.setItem("littleCafe", JSON.stringify(cafe));
-}
-
-// Current day
-let customers = [];
-let sales = 0;
-let visitors = 0;
-let happyTotal = 0;
-let reviews = 0;
-let lostCustomers = 0;
-let timeLeft = 45;
-let running = false;
-let lastFrame = 0;
-let spawnTimer = 0;
-let noise = 0;
-let customerId = 0;
-let counts = { student: 0, social: 0, regular: 0 };
-
-// Screen navigation
-function showScreen(name) {
   document.querySelectorAll(".screen").forEach(screen => {
     screen.classList.remove("active");
   });
 
-  document.getElementById(name).classList.add("active");
+  selectedScreen.classList.add("active");
 
-  if (name === "scenario") showChallenge();
-  if (name === "setup") showSetup();
+  if (screenName === "setup") {
+    updateSetup();
+  }
 }
 
-// Scenario
-function currentChallenge() {
-  return challenges[Math.min(cafe.unlocked, challenges.length - 1)];
+// Buy furniture and upgrades
+function buyUpgrade(item, cost) {
+  if (cafe.budget < cost) {
+    document.getElementById("message").textContent =
+      "Not enough money!";
+    return;
+  }
+
+  if (item === "tables" && cafe.tables >= 6) {
+    document.getElementById("message").textContent =
+      "No room for more tables!";
+    return;
+  }
+
+  if ((item === "wifi" || item === "sound") && cafe[item] >= 3) {
+    document.getElementById("message").textContent =
+      "Maximum upgrade level reached!";
+    return;
+  }
+
+  cafe.budget -= cost;
+  cafe[item]++;
+
+  document.getElementById("message").textContent =
+    "Upgrade purchased!";
+
+  saveGame();
+  updateSetup();
 }
 
-function showChallenge() {
-  const challenge = currentChallenge();
-
-  document.getElementById("challengeTitle").textContent =
-    challenge.title;
-
-  document.getElementById("challengeDescription").textContent =
-    challenge.description;
-
-  document.getElementById("challengeGoals").textContent =
-    `Earn $${challenge.sales} and reach ${challenge.satisfaction}% satisfaction.`;
-}
-
-// Setup screen
-function showSetup() {
-  document.getElementById("dayNumber").textContent = cafe.day;
-  document.getElementById("setupMoney").textContent = cafe.money;
+// Update setup information
+function updateSetup() {
+  document.getElementById("budget").textContent = cafe.budget;
+  document.getElementById("tables").textContent = cafe.tables;
+  document.getElementById("wifi").textContent = cafe.wifi;
+  document.getElementById("sound").textContent = cafe.sound;
+  document.getElementById("plants").textContent = cafe.plants;
 
   document.getElementById("price").value = cafe.price;
   document.getElementById("music").value = cafe.music;
 
   document.getElementById("priceValue").textContent = cafe.price;
   document.getElementById("musicValue").textContent = cafe.music;
-  document.getElementById("setupMessage").textContent =
-    `Tables: ${cafe.tables} | Wi-Fi: ${cafe.wifi} | Sound panels: ${cafe.sound} | Plants: ${cafe.plants}`;
+
+  updateIdentity();
 }
 
-// Buy permanent upgrades
-function buy(item, cost) {
-  if (cafe.money < cost) {
-    document.getElementById("setupMessage").textContent =
-      "Not enough money!";
-    return;
-  }
-
-  if ((item === "wifi" || item === "sound") && cafe[item] >= 3) {
-    document.getElementById("setupMessage").textContent =
-      "This upgrade is already at its maximum level!";
-    return;
-  }
-
-  if (item === "table" && cafe.tables >= 6) {
-    document.getElementById("setupMessage").textContent =
-      "Your café has no room for more tables!";
-    return;
-  }
-
-  cafe.money -= cost;
-
-  if (item === "table") cafe.tables++;
-  else cafe[item]++;
-
-  saveCafe();
-  showSetup();
-}
-
-// Configuration
-document.getElementById("price").oninput = function() {
+// Coffee price
+document.getElementById("price").addEventListener("input", function() {
   cafe.price = Number(this.value);
   document.getElementById("priceValue").textContent = cafe.price;
-  saveCafe();
-};
 
-document.getElementById("music").oninput = function() {
+  saveGame();
+  updateIdentity();
+});
+
+// Music volume
+document.getElementById("music").addEventListener("input", function() {
   cafe.music = Number(this.value);
   document.getElementById("musicValue").textContent = cafe.music;
-  saveCafe();
-};
 
-document.getElementById("liveMusic").oninput = function() {
-  cafe.music = Number(this.value);
-  document.getElementById("liveMusicValue").textContent = cafe.music;
-  saveCafe();
-};
+  saveGame();
+  updateIdentity();
+});
+
+// Show possible effects of decisions
+function updateIdentity() {
+  const effects = [];
+
+  if (cafe.wifi > 0) {
+    effects.push("Better Wi-Fi may attract more students.");
+  }
+
+  if (cafe.tables >= 5) {
+    effects.push("Extra seating allows more customers inside.");
+  }
+
+  if (cafe.sound > 0) {
+    effects.push("Sound panels help keep noise under control.");
+  }
+
+  if (cafe.plants > 0) {
+    effects.push("Plants make the café more comfortable.");
+  }
+
+  if (cafe.music >= 7) {
+    effects.push("Loud music may attract social customers.");
+  }
+
+  if (cafe.price >= 7) {
+    effects.push("Higher prices may discourage some visitors.");
+  }
+
+  // These are predictions, not guaranteed outcomes
+  document.getElementById("identity").textContent =
+    "A café shaped by your decisions.";
+
+  document.getElementById("prediction").textContent =
+    effects.length > 0
+      ? effects.join(" ")
+      : "Your café is currently small, simple, and welcoming.";
+}
+
+updateSetup();
+
+
+// Canvas
+const canvas = document.getElementById("cafeCanvas");
+const ctx = canvas.getContext("2d");
 
 // Customer types
-const types = {
+const customerTypes = {
   student: {
-    color: "#8da9b9",
-    patience: 11,
-    stay: 18,
-    noiseTolerance: 3
+    color: "#90a8bb",
+    stay: 20,
+    noiseTolerance: 4
   },
+
   social: {
-    color: "#d99a88",
-    patience: 9,
+    color: "#d99c88",
     stay: 12,
     noiseTolerance: 9
   },
+
   regular: {
-    color: "#d5ad65",
-    patience: 13,
+    color: "#d6b274",
     stay: 9,
     noiseTolerance: 6
   }
 };
 
-// Table positions
+// Table locations
 const tablePositions = [
-  { x: 280, y: 125 },
-  { x: 510, y: 125 },
-  { x: 280, y: 310 },
-  { x: 510, y: 310 },
-  { x: 395, y: 220 },
-  { x: 640, y: 220 }
+  { x: 270, y: 120 },
+  { x: 510, y: 120 },
+  { x: 270, y: 320 },
+  { x: 510, y: 320 },
+  { x: 390, y: 220 },
+  { x: 650, y: 220 }
 ];
 
-// Start the day
-function startDay() {
-  customers = [];
-  sales = 0;
-  visitors = 0;
-  happyTotal = 0;
-  reviews = 0;
-  lostCustomers = 0;
-  counts = { student: 0, social: 0, regular: 0 };
+// Simulation variables
+let customers = [];
+let visitors = 0;
+let noise = 0;
+let timeLeft = 60;
+let spawnTimer = 0;
+let running = false;
+let lastFrame = 0;
+let customerNumber = 0;
 
-  timeLeft = 45;
-  spawnTimer = 0;
-  noise = 0;
-  running = true;
 
-  document.getElementById("playDay").textContent = cafe.day;
-  document.getElementById("liveMusic").value = cafe.music;
-  document.getElementById("liveMusicValue").textContent = cafe.music;
-
-  showScreen("play");
-
-  lastFrame = performance.now();
-  requestAnimationFrame(gameLoop);
+function drawCircle(x, y, radius, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
 }
 
-// Customers arrive independently
-function spawnCustomer() {
-  const choices = ["student", "social", "regular"];
+function drawCafe() {
+  // Floor
+  ctx.fillStyle = "#ead9bf";
+  ctx.fillRect(0, 0, 800, 500);
 
-  // Better Wi-Fi attracts more students
-  for (let i = 0; i < cafe.wifi; i++) {
+  // Counter
+  ctx.fillStyle = "#a67454";
+  ctx.fillRect(25, 30, 160, 85);
+
+  ctx.fillStyle = "white";
+  ctx.font = "20px Georgia";
+  ctx.fillText("COFFEE", 55, 80);
+
+  // Tables
+  for (let i = 0; i < cafe.tables; i++) {
+    const table = tablePositions[i];
+
+    drawCircle(table.x, table.y, 35, "#ad7956");
+    drawCircle(table.x, table.y, 27, "#c7956b");
+  }
+
+  // Plants
+  for (let i = 0; i < cafe.plants; i++) {
+    const x = 65 + (i % 5) * 45;
+    const y = 185 + Math.floor(i / 5) * 45;
+
+    drawCircle(x, y, 15, "#819879");
+  }
+
+  // Entrance
+  ctx.fillStyle = "#654b3b";
+  ctx.font = "18px Georgia";
+  ctx.fillText("ENTRANCE ↑", 30, 475);
+}
+
+
+function createCustomer() {
+  let choices = ["student", "social", "regular"];
+
+  // Better Wi-Fi attracts students
+  for (let i = 0; i < cafe.wifi * 2; i++) {
     choices.push("student");
   }
 
+  // Loud music attracts social customers
+  if (cafe.music >= 7) {
+    choices.push("social", "social", "social");
+  }
+
   const type = choices[Math.floor(Math.random() * choices.length)];
-  const settings = types[type];
 
   visitors++;
-  counts[type]++;
 
-  const usedTables = customers
+  // Find available tables
+  const occupied = customers
     .filter(c => c.state !== "leaving")
     .map(c => c.table);
 
   const freeTables = [];
 
   for (let i = 0; i < cafe.tables; i++) {
-    if (!usedTables.includes(i)) freeTables.push(i);
+    if (!occupied.includes(i)) {
+      freeTables.push(i);
+    }
   }
 
-  // No seating available
   if (freeTables.length === 0) {
-    lostCustomers++;
-    addReview(20);
+    showMessage("A customer left because there were no available tables!");
     return;
   }
 
-  // Customers select their own table
+  // Expensive coffee discourages some customers
+  if (cafe.price >= 7 && Math.random() < 0.35) {
+    showMessage("A customer left because coffee was too expensive!");
+    return;
+  }
+
   const table = freeTables[Math.floor(Math.random() * freeTables.length)];
   const position = tablePositions[table];
 
-  // Higher prices reduce willingness to stay
-  if (cafe.price >= 7 && Math.random() < 0.3) {
-    lostCustomers++;
-    addReview(35);
-    return;
-  }
-
   customers.push({
-    id: customerId++,
+    id: customerNumber++,
     type: type,
     table: table,
-    x: 75,
-    y: 430,
+    x: 70,
+    y: 450,
     targetX: position.x,
-    targetY: position.y + 48,
+    targetY: position.y + 50,
     state: "walking",
     timer: 0,
-    patience: settings.patience,
-    stay: settings.stay,
-    happiness: 75
+    happiness: 80
   });
+
+  showMessage(`A ${type} entered the café!`);
 }
 
-// Record a customer review
-function addReview(score) {
-  happyTotal += Math.max(0, Math.min(100, score));
-  reviews++;
-}
 
-// Simulation rules
-function update(dt) {
-  timeLeft -= dt;
-  spawnTimer += dt;
-
-  const challengeIndex = Math.min(cafe.unlocked, 2);
-  const spawnInterval = [3.5, 2.6, 2.4][challengeIndex];
-
-  if (spawnTimer >= spawnInterval) {
-    spawnCustomer();
-    spawnTimer = 0;
-  }
-
+function updateCustomers(dt) {
   const socialCount = customers.filter(c =>
     c.type === "social" && c.state !== "leaving"
   ).length;
 
-  const crowding = customers.filter(c =>
+  const inside = customers.filter(c =>
     c.state !== "leaving"
   ).length;
 
+  // Noise emerges from music and customers
   noise = Math.max(0,
     cafe.music +
     socialCount * 2 +
-    Math.max(0, crowding - 3) -
+    Math.max(0, inside - 3) -
     cafe.sound * 2
   );
 
   customers.forEach(c => {
-    const settings = types[c.type];
+    const traits = customerTypes[c.type];
 
     if (c.state === "walking") {
       const dx = c.targetX - c.x;
       const dy = c.targetY - c.y;
       const distance = Math.hypot(dx, dy);
 
-      if (distance < 3) {
+      if (distance < 4) {
         c.x = c.targetX;
         c.y = c.targetY;
-        c.state = "waiting";
+        c.state = "sitting";
         c.timer = 0;
       } else {
-        const step = Math.min(distance, 100 * dt);
+        const step = Math.min(distance, 110 * dt);
         c.x += dx / distance * step;
         c.y += dy / distance * step;
       }
     }
 
-    else if (c.state === "waiting") {
+    else if (c.state === "sitting") {
       c.timer += dt;
 
-      if (c.timer > c.patience) {
-        c.happiness -= 40;
-        leaveCustomer(c);
-      }
-    }
-
-    else if (c.state === "eating") {
-      c.timer += dt;
-
-      // Noise affects noise-sensitive customers
-      if (noise > settings.noiseTolerance) {
-        c.happiness -= 3 * dt;
+      // Noise reduces happiness
+      if (noise > traits.noiseTolerance) {
+        c.happiness -= 5 * dt;
       }
 
-      // Plants improve atmosphere
+      // Plants improve comfort
       if (cafe.plants > 0) {
         c.happiness += 0.5 * dt;
       }
 
-      // Students enjoy Wi-Fi and stay longer
-      let stayTime = c.stay;
+      let stayTime = traits.stay;
 
-      if (c.type === "student" && cafe.wifi > 0) {
-        stayTime += cafe.wifi * 3;
+      // Wi-Fi encourages longer study sessions
+      if (c.type === "student") {
+        stayTime += cafe.wifi * 5;
       }
 
-      if (c.happiness < 35 || c.timer >= stayTime) {
-        leaveCustomer(c);
+      if (c.timer >= stayTime || c.happiness < 35) {
+        c.state = "leaving";
+        showMessage(`A ${c.type} left the café.`);
       }
     }
 
     else if (c.state === "leaving") {
-      const dx = 75 - c.x;
-      const dy = 430 - c.y;
+      const dx = 70 - c.x;
+      const dy = 450 - c.y;
       const distance = Math.hypot(dx, dy);
 
       if (distance < 5) {
@@ -380,140 +381,79 @@ function update(dt) {
   });
 
   customers = customers.filter(c => c.state !== "gone");
-
-  updateStats();
 }
 
-function leaveCustomer(c) {
-  c.state = "leaving";
-  addReview(c.happiness);
-}
-
-// Player serves an order
-function serveCustomer(c) {
-  if (c.state !== "waiting") return;
-
-  c.state = "eating";
-  c.timer = 0;
-
-  c.happiness += 10;
-
-  sales += cafe.price;
-}
-
-// Click customer orders
-canvas.addEventListener("click", event => {
-  if (!running) return;
-
-  const rect = canvas.getBoundingClientRect();
-
-  const x = (event.clientX - rect.left) * canvas.width / rect.width;
-  const y = (event.clientY - rect.top) * canvas.height / rect.height;
-
+function drawCustomers() {
   customers.forEach(c => {
-    if (c.state === "waiting") {
-      const distance = Math.hypot(c.x - x, c.y - y);
+    const traits = customerTypes[c.type];
 
-      if (distance < 36) {
-        serveCustomer(c);
-      }
-    }
-  });
+    // Customer body
+    drawCircle(c.x, c.y, 18, traits.color);
 
-  updateStats();
-});
-
-function updateStats() {
-  document.getElementById("time").textContent =
-    Math.ceil(Math.max(0, timeLeft));
-
-  document.getElementById("sales").textContent = sales;
-  document.getElementById("noise").textContent = noise;
-  document.getElementById("visitors").textContent = visitors;
-}
-
-// Drawing
-function drawCircle(x, y, radius, color) {
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function draw() {
-  ctx.clearRect(0, 0, 800, 480);
-
-  // Floor
-  ctx.fillStyle = "#ead9bf";
-  ctx.fillRect(0, 0, 800, 480);
-
-  // Counter
-  ctx.fillStyle = "#a67454";
-  ctx.fillRect(25, 35, 155, 85);
-
-  ctx.fillStyle = "white";
-  ctx.font = "20px Georgia";
-  ctx.fillText("COFFEE", 55, 85);
-
-  // Tables
-  for (let i = 0; i < cafe.tables; i++) {
-    const table = tablePositions[i];
-
-    drawCircle(table.x, table.y, 34, "#ad7956");
-    drawCircle(table.x, table.y, 26, "#c7956b");
-  }
-
-  // Plants
-  for (let i = 0; i < cafe.plants; i++) {
-    const x = 55 + (i % 6) * 45;
-    const y = 175 + Math.floor(i / 6) * 45;
-
-    drawCircle(x, y, 15, "#819879");
-  }
-
-  // Entrance
-  ctx.fillStyle = "#654b3b";
-  ctx.font = "18px Georgia";
-  ctx.fillText("ENTRANCE", 25, 460);
-
-  // Customers
-  customers.forEach(c => {
-    drawCircle(c.x, c.y, 17, types[c.type].color);
-
-    // Face
-    ctx.fillStyle = "#49372e";
+    // Eyes
     drawCircle(c.x - 5, c.y - 3, 2, "#49372e");
     drawCircle(c.x + 5, c.y - 3, 2, "#49372e");
 
-    // Waiting order
-    if (c.state === "waiting") {
-      drawCircle(c.x, c.y - 35, 17, "#fffaf3");
+    // Reactions
+    ctx.textAlign = "center";
+    ctx.font = "20px Georgia";
 
-      ctx.fillStyle = "#49372e";
-      ctx.font = "18px Georgia";
-      ctx.textAlign = "center";
-      ctx.fillText("☕", c.x, c.y - 29);
-      ctx.textAlign = "left";
+    if (c.state === "sitting") {
+      if (c.happiness < 50) {
+        ctx.fillText("😠", c.x, c.y - 30);
+      } else if (c.type === "student" && cafe.wifi > 0) {
+        ctx.fillText("📶", c.x, c.y - 30);
+      } else {
+        ctx.fillText("♥", c.x, c.y - 30);
+      }
     }
 
-    // Drinking
-    if (c.state === "eating") {
-      ctx.fillStyle = "#49372e";
-      ctx.font = "13px Georgia";
-      ctx.fillText("♥", c.x + 16, c.y - 18);
-    }
+    ctx.textAlign = "left";
   });
 }
 
-// Animation loop
+function startDay() {
+  customers = [];
+  visitors = 0;
+  noise = 0;
+  timeLeft = 60;
+  spawnTimer = 0;
+  running = true;
+
+  showScreen("play");
+
+  lastFrame = performance.now();
+  requestAnimationFrame(gameLoop);
+}
+
 function gameLoop(now) {
   if (!running) return;
 
   const dt = Math.min((now - lastFrame) / 1000, 0.05);
   lastFrame = now;
 
-  update(dt);
-  draw();
+  timeLeft -= dt;
+  spawnTimer += dt;
+
+  if (spawnTimer >= 4) {
+    createCustomer();
+    spawnTimer = 0;
+  }
+
+  updateCustomers(dt);
+
+  drawCafe();
+  drawCustomers();
+
+  document.getElementById("time").textContent =
+    Math.ceil(Math.max(0, timeLeft));
+
+  document.getElementById("visitors").textContent = visitors;
+
+  document.getElementById("inside").textContent =
+    customers.filter(c => c.state !== "leaving").length;
+
+  document.getElementById("noise").textContent = noise;
 
   if (timeLeft <= 0) {
     endDay();
@@ -522,93 +462,11 @@ function gameLoop(now) {
   }
 }
 
-// End of day
+function showMessage(text) {
+  document.getElementById("gameMessage").textContent = text;
+}
+
 function endDay() {
   running = false;
-
-  // Include remaining customers in satisfaction
-  customers.forEach(c => {
-    if (c.state !== "leaving" && c.state !== "gone") {
-      addReview(c.happiness);
-    }
-  });
-
-  const satisfaction = reviews > 0
-    ? Math.round(happyTotal / reviews)
-    : 0;
-
-  const challenge = currentChallenge();
-
-  const won =
-    sales >= challenge.sales &&
-    satisfaction >= challenge.satisfaction;
-
-  cafe.money += sales;
-
-  if (won && cafe.unlocked < challenges.length - 1) {
-    cafe.unlocked++;
-  }
-
-  document.getElementById("reportDay").textContent = cafe.day;
-
-  document.getElementById("resultTitle").textContent =
-    won ? "Challenge Complete! ⭐" : "Another Day at the Café";
-
-  document.getElementById("resultMessage").textContent =
-    won
-      ? "Great work! Your café is growing."
-      : "Not quite there yet. Try adjusting your setup.";
-
-  document.getElementById("reportStats").textContent =
-    `Sales: $${sales} | Satisfaction: ${satisfaction}% | Visitors: ${visitors} | Turned away: ${lostCustomers} | Total money: $${cafe.money}`;
-
-  // Describe the customer mix that emerged
-  let identity = "a neighborhood café";
-
-  if (counts.student > counts.social &&
-      counts.student > counts.regular) {
-    identity = "a student study café";
-  }
-
-  if (counts.social > counts.student &&
-      counts.social > counts.regular) {
-    identity = "a lively social café";
-  }
-
-  let explanation = `Your café became ${identity}. `;
-
-  if (lostCustomers > 0) {
-    explanation += `${lostCustomers} visitors left without ordering. `;
-  }
-
-  if (cafe.wifi > 0) {
-    explanation += "Your Wi-Fi encouraged students to visit and stay longer. ";
-  }
-
-  if (cafe.music >= 7) {
-    explanation += "Loud music made the environment less comfortable for quiet customers.";
-  }
-
-  document.getElementById("emergenceText").textContent = explanation;
-
-  cafe.day++;
-  saveCafe();
-
-  showScreen("report");
+  showScreen("setup");
 }
-
-function nextDay() {
-  showScreen("scenario");
-}
-
-// Reset saved game
-function resetGame() {
-  if (!confirm("Start over and delete your café progress?")) return;
-
-  cafe = newCafe();
-  saveCafe();
-  showScreen("scenario");
-}
-
-// First screen
-showScreen("start");

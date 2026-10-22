@@ -8,139 +8,95 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main>
-    <!-- START SCREEN -->
-    <section id="start" class="screen active">
-      <div class="start-card">
-        <div class="coffee-icon">☕</div>
-        <h1>One Little<br>Coffee Shop</h1>
-        <p>You design the space.<br>
-           The customers define what it becomes.</p>
 
-        <button onclick="showScreen('scenario')">
-          Play
-        </button>
-        <button class="secondary" onclick="resetGame()">
-          New Game
-        </button>
-      </div>
-    </section>
- <!-- SCENARIO SCREEN -->
-    <section id="scenario" class="screen">
-      <h1>Today's Challenge</h1>
 
-      <div class="paper">
-        <h2 id="challengeTitle"></h2>
-        <p id="challengeDescription"></p>
+<!-- SETUP SCREEN -->
+<section id="setup" class="screen active">
+  <h1>Prepare Your Café</h1>
+  <p>Spend wisely! Your choices will affect your customers.</p>
 
-        <h3>Your Goals</h3>
-        <p id="challengeGoals"></p>
-      </div>
+  <div class="card">
+    <h2>Budget: $<span id="budget">150</span></h2>
+    <p id="message">What will you improve today?</p>
+  </div>
 
-      <button onclick="showScreen('setup')">
-        Design Your Café →
-      </button>
-    </section>
+  <div class="shop">
 
-    <!-- SETUP SCREEN -->
-    <section id="setup" class="screen">
-      <h1>Prepare Your Café</h1>
-      <p>Day <span id="dayNumber"></span></p>
-      <h2>Money: $<span id="setupMoney"></span></h2>
+    <div class="item">
+      <h3>🪑 Extra Table</h3>
+      <p>$40 — More seating, but potentially more noise.</p>
+      <p>Tables: <span id="tables">3</span></p>
+      <button onclick="buyUpgrade('tables', 40)">Buy</button>
+    </div>
 
-      <div class="shop">
-        <div class="item">
-          <h3>🪑 Extra Table</h3>
-          <p>More room for customers</p>
-          <button onclick="buy('table', 40)">Buy $40</button>
-        </div>
+    <div class="item">
+      <h3>📶 Better Wi-Fi</h3>
+      <p>$50 — Attracts students who stay longer.</p>
+      <p>Wi-Fi level: <span id="wifi">0</span>/3</p>
+      <button onclick="buyUpgrade('wifi', 50)">Buy</button>
+    </div>
 
-        <div class="item">
-          <h3>📶 Better Wi-Fi</h3>
-          <p>Attracts students</p>
-          <button onclick="buy('wifi', 50)">Buy $50</button>
-        </div>
+    <div class="item">
+      <h3>🔇 Sound Panels</h3>
+      <p>$45 — Reduce noise throughout the café.</p>
+      <p>Sound panels: <span id="sound">0</span>/3</p>
+      <button onclick="buyUpgrade('sound', 45)">Buy</button>
+    </div>
 
-        <div class="item">
-          <h3>🔇 Sound Panels</h3>
-          <p>Reduce noise</p>
-          <button onclick="buy('sound', 45)">Buy $45</button>
-        </div>
+    <div class="item">
+      <h3>🌿 Plants</h3>
+      <p>$20 — Make the environment more inviting.</p>
+      <p>Plants: <span id="plants">0</span></p>
+      <button onclick="buyUpgrade('plants', 20)">Buy</button>
+    </div>
 
-        <div class="item">
-          <h3>🌿 Plant</h3>
-          <p>Improves atmosphere</p>
-          <button onclick="buy('plant', 20)">Buy $20</button>
-        </div>
-      </div>
+  </div>
 
-      <div class="settings">
-        <h2>Café Settings</h2>
+  <div class="card">
+    <h2>Café Settings</h2>
 
-        <label for="price">
-          Coffee price: $<span id="priceValue"></span>
-        </label>
-        <input type="range" id="price"
-               min="3" max="8" step="1">
+    <label for="price">
+      Coffee price: $<span id="priceValue">5</span>
+    </label>
+    <input type="range" id="price"
+           min="3" max="8" value="5">
 
-        <label for="music">
-          Music volume: <span id="musicValue"></span>
-        </label>
-        <input type="range" id="music"
-               min="0" max="10" step="1">
-      </div>
+    <label for="music">
+      Music volume: <span id="musicValue">3</span>
+    </label>
+    <input type="range" id="music"
+           min="0" max="10" value="3">
+  </div>
 
-      <p id="setupMessage"></p>
+  <div class="card">
+    <h2>Your Café's Current Identity</h2>
+    <p id="identity">A small neighborhood café.</p>
+    <p id="prediction"></p>
+  </div>
 
-      <button onclick="startDay()">Open Café →</button>
-    </section>
+  <button onclick="startDay()">Open Café →</button>
+</section>
 
-    <!-- PLAY SCREEN -->
-    <section id="play" class="screen">
-      <div class="topbar">
-        <h2>☕ One Little Coffee Shop</h2>
-        <span>Day <span id="playDay"></span></span>
-      </div>
+<!-- GAMEPLAY SCREEN -->
+<section id="play" class="screen">
+  <h1>Your Café is Open! ☕</h1>
 
-      <div class="stats">
-        <div>Time: <span id="time">45</span>s</div>
-        <div>Sales: $<span id="sales">0</span></div>
-        <div>Noise: <span id="noise">0</span></div>
-        <div>Visitors: <span id="visitors">0</span></div>
-      </div>
+  <div class="game-stats">
+    <p>Time: <span id="time">60</span>s</p>
+    <p>Customers: <span id="visitors">0</span></p>
+    <p>Inside: <span id="inside">0</span></p>
+    <p>Noise: <span id="noise">0</span></p>
+  </div>
 
-      <canvas id="cafe" width="800" height="480"></canvas>
+  <canvas id="cafeCanvas" width="800" height="500"></canvas>
 
-      <div class="play-controls">
-        <label for="liveMusic">
-          Music: <span id="liveMusicValue"></span>
-        </label>
-        <input id="liveMusic" type="range"
-               min="0" max="10" step="1">
+  <div class="game-info">
+    <h3>What's happening?</h3>
+    <p id="gameMessage">Your first customers are arriving...</p>
+  </div>
 
-        <p>Click a customer's ☕ order to serve them!</p>
-      </div>
-    </section>
-
-    <!-- REPORT SCREEN -->
-    <section id="report" class="screen">
-      <h1>End of Day <span id="reportDay"></span></h1>
-
-      <div class="paper">
-        <h2 id="resultTitle"></h2>
-        <p id="resultMessage"></p>
-
-        <h3>Today's Results</h3>
-        <p id="reportStats"></p>
-
-        <h3>What Emerged?</h3>
-        <p id="emergenceText"></p>
-      </div>
-
-      <button onclick="nextDay()">Continue →</button>
-    </section>
-
-  </main>
+  <button onclick="endDay()">Close Café</button>
+</section>
 
   <script src="script.js"></script>
 </body>
