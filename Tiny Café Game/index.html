@@ -9,6 +9,28 @@
 </head>
 <body>
 
+ 
+<!-- SCENARIO SCREEN -->
+<section id="scenario" class="screen">
+  <h1>Today's Mission ☕</h1>
+
+  <div class="card">
+    <p>Day <span id="missionDay">1</span></p>
+
+    <h2 id="missionTitle"></h2>
+    <p id="missionDescription"></p>
+
+    <h3>Your Goals</h3>
+    <p id="missionGoals"></p>
+
+    <h3>Things to Consider</h3>
+    <p id="missionHint"></p>
+  </div>
+
+  <button onclick="showScreen('setup')">
+    Prepare Your Café →
+  </button>
+</section>
 
 <!-- SETUP SCREEN -->
 <section id="setup" class="screen active">
@@ -79,40 +101,80 @@
 
 <!-- GAMEPLAY SCREEN -->
 <section id="play" class="screen">
-  <h1>Your Café is Open! ☕</h1>
+  <h1>One Little Coffee Shop ☕</h1>
+  <h3 id="activeMission"></h3>
 
   <div class="game-stats">
     <p>Time: <span id="time">60</span>s</p>
-    <p>Customers: <span id="visitors">0</span></p>
-    <p>Inside: <span id="inside">0</span></p>
-    <p>Noise: <span id="noise">0</span></p>
     <p>Sales: $<span id="sales">0</span></p>
+    <p>Served: <span id="served">0</span></p>
+    <p>Happy: <span id="happy">0</span></p>
+    <p>Turned away: <span id="turnedAway">0</span></p>
+    <p>Noise: <span id="noise">0</span></p>
   </div>
 
   <canvas id="cafeCanvas" width="800" height="500"></canvas>
 
   <div class="service-panel">
     <h3>☕ Coffee Station</h3>
-    <p id="orderStatus">No orders yet.</p>
-    <p id="serviceHelp">
-      Click a customer's order bubble to take their order.
-    </p>
+    <p id="orderStatus">No order selected</p>
+    <p id="serviceHelp">Click a customer to take an order.</p>
+  </div>
+
+  <div class="management-panel">
+    <h3>Manage Your Café</h3>
+
+    <label for="liveMusic">
+      🎵 Music: <span id="liveMusicValue">3</span>
+    </label>
+
+    <input type="range" id="liveMusic"
+           min="0" max="10" value="3">
+
+    <p>Selected customer: <span id="selectedCustomer">None</span></p>
+
+    <button onclick="offerWater()">
+      💧 Offer Free Water ($2)
+    </button>
+
+    <p>Click a customer to select them.</p>
   </div>
 
   <div class="game-info">
-    <h3>What's happening?</h3>
-    <p id="gameMessage">Your first customers are arriving...</p>
+    <h3>What's Happening?</h3>
+    <p id="gameMessage">The café is opening...</p>
+    <div id="eventLog"></div>
   </div>
 
   <button onclick="endDay()">Close Café</button>
 </section>
 
+
+
 <!-- RESULTS SCREEN -->
 <section id="results" class="screen">
-  <h1>Day Complete!</h1>
-  <div class="card"></div>
-  <button onclick="showScreen('setup')">Next Day →</button>
+  <h1>End of Day Report</h1>
+
+  <div class="card">
+    <h2 id="resultTitle"></h2>
+    <p id="resultMessage"></p>
+
+    <h3>Customer Outcomes</h3>
+    <p id="resultCustomers"></p>
+
+    <h3>Your Decisions & Their Effects</h3>
+    <p id="resultEffects"></p>
+
+    <h3>What Emerged?</h3>
+    <p id="resultIdentity"></p>
+
+    <h3>Money Available</h3>
+    <p>$<span id="resultMoney"></span></p>
+  </div>
+
+  <button onclick="nextDay()">Continue →</button>
 </section>
+
 
   <script src="script.js"></script>
 </body>
