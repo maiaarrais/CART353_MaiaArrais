@@ -164,3 +164,60 @@ input[type="range"] {
 #cafeCanvas {
   cursor: pointer;
 }
+
+
+.management-panel {
+  background: #e5eadb;
+  border: 2px solid #cad4c0;
+  border-radius: 15px;
+  padding: 20px;
+  margin: 20px auto;
+  max-width: 760px;
+}
+
+.management-panel button {
+  background: #ba8e79;
+}
+
+.management-panel button:hover {
+  background: #a87863;
+}
+
+#selectedCustomer {
+  color: #6d8662;
+  font-weight: bold;
+}
+
+.game-info {
+  text-align: left;
+}
+
+#eventLog {
+  margin-top: 15px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.event {
+  background: #fff9f0;
+  border-left: 4px solid #9bad91;
+  padding: 10px;
+  margin: 8px 0;
+  border-radius: 5px;
+  font-size: 14px;
+}
+
+.event.warning {
+  border-left-color: #c78470;
+}
+
+#resultCustomers,
+#resultEffects,
+#resultIdentity {
+  line-height: 2;
+  white-space: pre-line;
+}
+
+#cafeCanvas {
+  cursor: pointer;
+}
