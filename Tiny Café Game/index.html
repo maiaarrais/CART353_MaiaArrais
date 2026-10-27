@@ -86,6 +86,7 @@
     <p>Customers: <span id="visitors">0</span></p>
     <p>Inside: <span id="inside">0</span></p>
     <p>Noise: <span id="noise">0</span></p>
+    <p>Sales: $<span id="sales">0</span></p>
   </div>
 
   <canvas id="cafeCanvas" width="800" height="500"></canvas>
@@ -104,6 +105,13 @@
   </div>
 
   <button onclick="endDay()">Close Café</button>
+</section>
+
+<!-- RESULTS SCREEN -->
+<section id="results" class="screen">
+  <h1>Day Complete!</h1>
+  <div class="card"></div>
+  <button onclick="showScreen('setup')">Next Day →</button>
 </section>
 
   <script src="script.js"></script>

@@ -776,4 +776,4 @@ function endDay() {
 }
 
 updateSetup();
-showScreen("start");
+showScreen("setup");
