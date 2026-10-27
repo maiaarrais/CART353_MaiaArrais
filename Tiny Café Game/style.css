@@ -211,6 +211,7 @@ input[type="range"] {
   border-left-color: #c78470;
 }
 
+#resultMessage,
 #resultCustomers,
 #resultEffects,
 #resultIdentity {

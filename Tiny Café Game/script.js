@@ -27,7 +27,11 @@ try {
 }
 
 function saveGame() {
-  localStorage.setItem("cafeSave", JSON.stringify(cafe));
+  try {
+    localStorage.setItem("cafeSave", JSON.stringify(cafe));
+  } catch (error) {
+    console.warn("Progress could not be saved in this browser.", error);
+  }
 }
 
 // --------------------
@@ -84,11 +88,17 @@ function showMission() {
 // --------------------
 
 function showScreen(name) {
+  const nextScreen = document.getElementById(name);
+  if (!nextScreen) {
+    console.error(`Screen "${name}" does not exist.`);
+    return;
+  }
+
   document.querySelectorAll(".screen").forEach(screen => {
     screen.classList.remove("active");
   });
 
-  document.getElementById(name).classList.add("active");
+  nextScreen.classList.add("active");
 
   if (name === "scenario") showMission();
   if (name === "setup") updateSetup();
@@ -225,6 +235,7 @@ let running = false;
 let timeLeft = 60;
 let spawnTimer = 0;
 let lastFrame = 0;
+let animationFrameId = null;
 let customerNumber = 0;
 
 let visitors = 0;
@@ -248,6 +259,9 @@ let completedVisits;
 // --------------------
 
 function startDay() {
+  if (running) return;
+  if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
+
   customers = [];
   dirtyTables = [];
 
@@ -302,7 +316,7 @@ function startDay() {
   addEvent("The café is open!");
 
   lastFrame = performance.now();
-  requestAnimationFrame(gameLoop);
+  animationFrameId = requestAnimationFrame(gameLoop);
 }
 
 // --------------------
@@ -685,8 +699,13 @@ canvas.addEventListener("click", event => {
 
   const rect = canvas.getBoundingClientRect();
 
-  const x = (event.clientX - rect.left) * canvas.width / rect.width;
-  const y = (event.clientY - rect.top) * canvas.height / rect.height;
+  // Map the content area, excluding the canvas border, to drawing coordinates.
+  const scaleX = rect.width / canvas.offsetWidth;
+  const scaleY = rect.height / canvas.offsetHeight;
+  const x = (event.clientX - rect.left - canvas.clientLeft * scaleX) *
+    canvas.width / (canvas.clientWidth * scaleX);
+  const y = (event.clientY - rect.top - canvas.clientTop * scaleY) *
+    canvas.height / (canvas.clientHeight * scaleY);
 
   if (x >= 25 && x <= 185 && y >= 30 && y <= 115) {
     useCoffeeMachine();
@@ -696,7 +715,11 @@ canvas.addEventListener("click", event => {
   for (const c of customers) {
     if (["leaving", "gone", "walking"].includes(c.state)) continue;
 
-    if (Math.hypot(c.x - x, c.y - y) < 38) {
+    const clickedBody = Math.hypot(c.x - x, c.y - y) < 18;
+    const clickedBubble = c.state === "waiting" &&
+      Math.hypot(c.x - x, c.y - 35 - y) < 17;
+
+    if (clickedBody || clickedBubble) {
       selectedCustomer = c.id;
 
       document.getElementById("selectedCustomer").textContent =
@@ -880,7 +903,7 @@ function gameLoop(now) {
   if (timeLeft <= 0) {
     endDay();
   } else {
-    requestAnimationFrame(gameLoop);
+    animationFrameId = requestAnimationFrame(gameLoop);
   }
 }
 
@@ -891,6 +914,10 @@ function gameLoop(now) {
 function endDay() {
   if (!running) return;
   running = false;
+  if (animationFrameId !== null) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
 
   // Only completed visits contribute to the outcomes
   const satisfaction = completedVisits > 0
@@ -968,5 +995,5 @@ function nextDay() {
   showScreen("scenario");
 }
 
-// Start screen
-showScreen("start");
+// Begin with today's mission before preparing the café.
+showScreen("scenario");
