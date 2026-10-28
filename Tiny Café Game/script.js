@@ -302,8 +302,10 @@ function startDay() {
   completedVisits = 0;
 
   document.getElementById("eventLog").innerHTML = "";
+  const mission = getMission();
+
   document.getElementById("activeMission").textContent =
-    getMission().title;
+    `Day ${cafe.day} · ${mission.title} · Goal: $${mission.sales} / ${mission.satisfaction}% happiness`;
 
   document.getElementById("liveMusic").value = cafe.music;
   document.getElementById("liveMusicValue").textContent = cafe.music;
@@ -699,13 +701,23 @@ canvas.addEventListener("click", event => {
 
   const rect = canvas.getBoundingClientRect();
 
-  // Map the content area, excluding the canvas border, to drawing coordinates.
+  // Match object-fit: contain, including its centered empty space and border.
   const scaleX = rect.width / canvas.offsetWidth;
   const scaleY = rect.height / canvas.offsetHeight;
-  const x = (event.clientX - rect.left - canvas.clientLeft * scaleX) *
-    canvas.width / (canvas.clientWidth * scaleX);
-  const y = (event.clientY - rect.top - canvas.clientTop * scaleY) *
-    canvas.height / (canvas.clientHeight * scaleY);
+  const drawingScale = Math.min(
+    canvas.clientWidth / canvas.width,
+    canvas.clientHeight / canvas.height
+  );
+  if (drawingScale <= 0) return;
+
+  const offsetX = (canvas.clientWidth - canvas.width * drawingScale) / 2;
+  const offsetY = (canvas.clientHeight - canvas.height * drawingScale) / 2;
+  const x = ((event.clientX - rect.left) / scaleX -
+    canvas.clientLeft - offsetX) / drawingScale;
+  const y = ((event.clientY - rect.top) / scaleY -
+    canvas.clientTop - offsetY) / drawingScale;
+
+  if (x < 0 || x > canvas.width || y < 0 || y > canvas.height) return;
 
   if (x >= 25 && x <= 185 && y >= 30 && y <= 115) {
     useCoffeeMachine();

@@ -1,4 +1,12 @@
 
+/* --------------------
+   GENERAL STYLING
+-------------------- */
+
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   background: #f6efe4;
@@ -6,45 +14,14 @@ body {
   font-family: Georgia, serif;
 }
 
-.screen {
-  display: none;
-  min-height: 100vh;
-  text-align: center;
-  padding: 80px 20px;
-  box-sizing: border-box;
-}
-
-.screen.active {
-  display: block;
-}
-
-h1 {
-  font-size: 42px;
-  margin-bottom: 15px;
-}
-
-p {
-  font-size: 17px;
-  line-height: 1.6;
-}
-
-.card {
-  background: #fffaf3;
-  border: 2px solid #e5d8c8;
-  border-radius: 15px;
-  max-width: 550px;
-  padding: 30px;
-  margin: 30px auto;
-}
-
 button {
   background: #91a583;
   color: white;
   border: none;
-  padding: 14px 30px;
   border-radius: 10px;
-  font-family: Georgia, serif;
-  font-size: 17px;
+  padding: 13px 25px;
+  font-family: inherit;
+  font-size: 16px;
   cursor: pointer;
 }
 
@@ -52,13 +29,139 @@ button:hover {
   background: #758e68;
 }
 
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+h1 {
+  font-size: 40px;
+  margin: 0 0 15px;
+}
+
+h2 {
+  font-size: 25px;
+}
+
+h3 {
+  font-size: 19px;
+}
+
+p {
+  line-height: 1.5;
+}
+
+
+/* --------------------
+   ALL SCREENS
+-------------------- */
+
+.screen {
+  display: none;
+  min-height: 100vh;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.screen.active {
+  display: block;
+}
+
+
+/* --------------------
+   START SCREEN
+-------------------- */
+
+#start {
+  background: #f6efe4;
+}
+
+#start.active {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+#start h1 {
+  font-size: 55px;
+  color: #654b3b;
+  line-height: 1.2;
+}
+
+#start p {
+  max-width: 450px;
+  color: #8a7566;
+  margin-bottom: 30px;
+}
+
+#start button {
+  min-width: 160px;
+}
+
+
+/* --------------------
+   SCENARIO SCREEN
+-------------------- */
+
+#scenario h1 {
+  color: #654b3b;
+}
+
+.card {
+  background: #fffaf3;
+  border: 2px solid #e5d8c8;
+  border-radius: 16px;
+  padding: 30px;
+  margin: 25px auto;
+  max-width: 650px;
+}
+
+.card h2 {
+  color: #6e8561;
+}
+
+.card h3 {
+  margin-top: 25px;
+}
+
+#missionDescription,
+#missionHint {
+  color: #7c6959;
+}
+
+#missionGoals {
+  font-size: 18px;
+  font-weight: bold;
+  color: #654b3b;
+}
+
+
+/* --------------------
+   SETUP SCREEN
+-------------------- */
+
+#setup {
+  max-width: 1050px;
+  margin: auto;
+}
+
+#setup > p {
+  color: #897768;
+}
+
+#setup .card {
+  max-width: 850px;
+}
+
+/* Furniture and upgrade shop */
 
 .shop {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 15px;
   max-width: 850px;
-  margin: 30px auto;
+  margin: 25px auto;
 }
 
 .item {
@@ -72,24 +175,42 @@ button:hover {
   margin-top: 0;
 }
 
+.item p {
+  color: #897768;
+  font-size: 14px;
+}
+
 .item button {
   margin-top: 10px;
 }
 
-label {
+/* Budget messages */
+
+#budget {
+  color: #6e8561;
+}
+
+#message {
+  color: #a87560;
+  min-height: 24px;
+}
+
+/* Configuration sliders */
+
+#setup label {
   display: block;
   margin: 20px 0 10px;
 }
 
-input[type="range"] {
+#setup input[type="range"] {
+  display: block;
+  margin: 10px auto 20px;
   width: 70%;
   max-width: 300px;
   accent-color: #91a583;
 }
 
-#message {
-  color: #a87560;
-}
+/* Predicted effects */
 
 #identity {
   font-size: 20px;
@@ -97,128 +218,410 @@ input[type="range"] {
   color: #718a66;
 }
 
-@media (max-width: 600px) {
-  .shop {
-    grid-template-columns: 1fr;
-  }
+#prediction {
+  color: #897768;
+  line-height: 1.8;
 }
+
+
+/* --------------------
+   GAMEPLAY SCREEN
+-------------------- */
+
+#play {
+  padding: 15px;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Main game container */
+
+.game-layout {
+  max-width: 1400px;
+  height: 100%;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+
+/* --------------------
+   GAME HEADER
+-------------------- */
+
+.game-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  background: #fffaf3;
+  padding: 12px 20px;
+  border-radius: 15px;
+  text-align: left;
+}
+
+.game-header h2 {
+  font-size: 21px;
+  margin: 0;
+  color: #654b3b;
+}
+
+.game-header p {
+  font-size: 13px;
+  margin: 5px 0 0;
+  color: #897768;
+}
+
+/* Statistics */
 
 .game-stats {
   display: flex;
-  justify-content: center;
+  gap: 8px;
   flex-wrap: wrap;
-  gap: 15px;
+  justify-content: flex-end;
 }
 
-.game-stats p {
-  background: #fffaf3;
-  padding: 10px 18px;
-  border-radius: 10px;
+.game-stats div {
+  background: #f0e6d8;
+  padding: 10px 13px;
+  border-radius: 9px;
+  font-size: 14px;
+  white-space: nowrap;
 }
+
+
+/* --------------------
+   MAIN GAME AREA
+-------------------- */
+
+.game-body {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(260px, 1fr);
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Café canvas container */
+
+.cafe-area {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Interactive café */
 
 #cafeCanvas {
   display: block;
   width: 100%;
-  max-width: 800px;
   height: auto;
-  margin: 25px auto;
+  max-height: calc(100% - 55px);
+  aspect-ratio: 8 / 5;
+  object-fit: contain;
   background: #ead9bf;
-  border: 6px solid #a78368;
+  border: 5px solid #a78368;
   border-radius: 15px;
-  box-sizing: border-box;
-}
-
-.game-info {
-  background: #fffaf3;
-  border-radius: 12px;
-  padding: 10px 20px;
-  max-width: 760px;
-  margin: 20px auto;
-}
-
-
-.service-panel {
-  background: #e5eadb;
-  border: 2px solid #cbd6c0;
-  border-radius: 15px;
-  max-width: 760px;
-  padding: 15px;
-  margin: 20px auto;
-}
-
-.service-panel h3 {
-  margin-top: 5px;
-}
-
-#orderStatus {
-  font-size: 20px;
-  font-weight: bold;
-  color: #58734e;
-}
-
-#serviceHelp {
-  font-size: 14px;
-  color: #766558;
-}
-
-#cafeCanvas {
+  margin: auto;
   cursor: pointer;
 }
 
+/* Under the café */
 
-.management-panel {
-  background: #e5eadb;
-  border: 2px solid #cad4c0;
-  border-radius: 15px;
-  padding: 20px;
-  margin: 20px auto;
-  max-width: 760px;
+.cafe-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  min-height: 50px;
+  text-align: left;
 }
 
-.management-panel button {
+.cafe-footer p {
+  font-size: 12px;
+  color: #897768;
+  margin: 0;
+}
+
+.cafe-footer button {
   background: #ba8e79;
+  padding: 9px 18px;
+  font-size: 13px;
+  margin: 0;
+  white-space: nowrap;
 }
 
-.management-panel button:hover {
+.cafe-footer button:hover {
   background: #a87863;
 }
+
+
+/* --------------------
+   MANAGEMENT SIDEBAR
+-------------------- */
+
+.game-sidebar {
+  display: flex;
+  flex-direction: column;
+  background: #fffaf3;
+  border-radius: 15px;
+  padding: 14px;
+  min-height: 0;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.sidebar-section {
+  padding: 10px 0;
+  border-bottom: 1px solid #e5d8c8;
+}
+
+.sidebar-section h3 {
+  font-size: 15px;
+  margin: 0 0 10px;
+  color: #654b3b;
+}
+
+.sidebar-section p {
+  font-size: 13px;
+  margin: 5px 0;
+}
+
+.sidebar-section small {
+  color: #897968;
+  font-size: 12px;
+}
+
+/* Coffee station */
+
+#orderStatus {
+  font-weight: bold;
+  color: #718a66;
+}
+
+#serviceHelp {
+  line-height: 1.5;
+}
+
+/* Selected customer */
 
 #selectedCustomer {
   color: #6d8662;
   font-weight: bold;
 }
 
-.game-info {
-  text-align: left;
+/* Sidebar buttons */
+
+.sidebar-section button {
+  background: #ba8e79;
+  font-size: 12px;
+  padding: 10px;
+  margin: 8px 0 0;
+  width: 100%;
+}
+
+.sidebar-section button:hover {
+  background: #a87863;
+}
+
+/* Music control */
+
+.music-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.music-control input {
+  flex: 1;
+  min-width: 0;
+  margin: 5px 0;
+  accent-color: #91a583;
+}
+
+#liveMusicValue {
+  font-size: 13px;
+  font-weight: bold;
+  color: #718a66;
+  min-width: 15px;
+}
+
+/* Events */
+
+.events-section {
+  flex: 1;
+  min-height: 0;
+  border-bottom: none;
+  display: flex;
+  flex-direction: column;
+}
+
+#gameMessage {
+  font-weight: bold;
+  color: #718a66;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 #eventLog {
-  margin-top: 15px;
-  max-height: 200px;
   overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+  margin-top: 8px;
 }
 
 .event {
-  background: #fff9f0;
-  border-left: 4px solid #9bad91;
-  padding: 10px;
-  margin: 8px 0;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 9px;
+  background: #f5eee5;
+  border-left: 3px solid #91a583;
+  margin-bottom: 6px;
   border-radius: 5px;
-  font-size: 14px;
 }
 
 .event.warning {
   border-left-color: #c78470;
 }
 
+
+/* --------------------
+   END OF DAY SCREEN
+-------------------- */
+
+#results h1 {
+  color: #654b3b;
+}
+
+#resultTitle {
+  color: #718a66;
+  font-size: 27px;
+}
+
 #resultMessage,
 #resultCustomers,
 #resultEffects,
 #resultIdentity {
-  line-height: 2;
   white-space: pre-line;
+  line-height: 1.9;
 }
 
-#cafeCanvas {
-  cursor: pointer;
+#resultCustomers {
+  color: #654b3b;
 }
+
+#resultEffects {
+  color: #897768;
+}
+
+#resultIdentity {
+  font-style: italic;
+  color: #718a66;
+}
+
+#resultMoney {
+  font-size: 24px;
+  font-weight: bold;
+  color: #718a66;
+}
+
+
+/* --------------------
+   RESPONSIVE DESIGN
+-------------------- */
+
+@media (max-width: 1000px) {
+  .game-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .game-stats {
+    justify-content: flex-start;
+  }
+
+  .game-body {
+    grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
+  }
+}
+
+@media (max-width: 850px) {
+  #play {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .game-layout {
+    height: auto;
+  }
+
+  .game-body {
+    grid-template-columns: 1fr;
+  }
+
+  .game-sidebar {
+    overflow: visible;
+  }
+
+  #cafeCanvas {
+    max-height: none;
+  }
+
+  #eventLog {
+    max-height: 180px;
+  }
+
+  .shop {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .screen {
+    padding: 35px 15px;
+  }
+
+  #play {
+    padding: 10px;
+  }
+
+  h1 {
+    font-size: 30px;
+  }
+
+  #start h1 {
+    font-size: 40px;
+  }
+
+  .card {
+    padding: 20px;
+  }
+
+  .game-header {
+    padding: 12px;
+  }
+
+  .game-header h2 {
+    font-size: 18px;
+  }
+
+  .game-stats div {
+    padding: 8px;
+    font-size: 12px;
+  }
+
+  .cafe-footer {
+    flex-wrap: wrap;
+    padding-top: 10px;
+  }
+
+  .game-sidebar {
+    padding: 12px;
+  }
+}
+
