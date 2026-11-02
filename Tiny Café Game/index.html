@@ -63,6 +63,10 @@
             <div><h3>Sound panels</h3><p>A softer, quieter atmosphere.</p><small>Level <span id="sound">0</span> of 3</small></div>
             <button data-upgrade="sound" data-cost="45" onclick="buyUpgrade('sound', 45)" aria-label="Buy sound panels for 45 dollars">$45</button>
           </div>
+          <div class="item">
+            <div><h3>Hire a barista</h3><p>Another pair of hands, with their own habits.</p><small><span id="staffCount">1</span> of 3 staff</small></div>
+            <button id="hireButton" onclick="hireStaff()" aria-label="Hire a barista for 60 dollars">$60</button>
+          </div>
         </div>
         <div class="setup-settings">
           <h2>The finishing touches</h2>
@@ -84,34 +88,21 @@
       <header class="game-header">
         <div class="game-heading"><span class="wordmark">Little Café<span class="wordmark-dot">.</span></span><p id="activeMission"></p></div>
         <div class="game-stats" aria-label="Today's progress">
-          <div class="time-stat"><span>Time left</span><strong><span id="time">90</span><small>s</small></strong></div>
+          <div class="time-stat"><span>Time left</span><strong><span id="time">60</span><small>s</small></strong></div>
           <div><span>Earnings</span><strong>$<span id="sales">0</span><small> / $<span id="salesGoal">20</span></small></strong></div>
           <div><span>Happy visits</span><strong><span id="happy">0</span><small> / <span id="happyGoal">3</span></small></strong></div>
         </div>
       </header>
-      <div class="floor-layout">
-      <aside class="manager-panel" aria-label="Staff and orders">
-        <h2>Your team</h2><div id="staffCards"></div>
-        <h2>Waiting orders</h2><p id="orderQueue">No orders waiting.</p>
-        <p class="muted">Espresso · $base · quick<br>Latte · $base + $1 · slow<br>Tea · $base · medium</p>
-      </aside>
       <main class="cafe-area">
-        <canvas id="cafeCanvas" width="1000" height="542" aria-label="Select a guest to manage their order, click the machine to make a drink yourself, and click dirty tables to clean"></canvas>
+        <canvas id="cafeCanvas" width="1000" height="542" aria-label="Click a seated customer to order, the counter's coffee machine to brew, and dirty tables to clean them"></canvas>
       </main>
-      </div>
-      <div class="identity-bar" title="Your current crowd and reputation shape who arrives next.">
-        <span>Café character</span>
-        <div id="identityTrack" class="identity-track" role="img" aria-label="Customer mix and reputation">
-          <i id="id-student"></i><i id="id-social"></i><i id="id-regular"></i>
-        </div>
-        <span class="identity-legend"><span>Students</span><span>Social</span><span>Regulars</span></span>
-      </div>
+      <div class="identity-bar"><span>Café identity</span><div class="identity-track">
+        <i id="id-student" style="background:#90a8bb">Students</i><i id="id-social" style="background:#d99c88">Social</i><i id="id-regular" style="background:#d6b274">Regulars</i></div></div>
+      <div class="staff-row" id="staffRow" aria-label="Staff"></div>
       <div class="service-dock">
-        <div class="service-instruction"><strong id="orderStatus">Ready to welcome customers</strong><p id="serviceHelp">Staff take orders automatically. Select a guest to help.</p></div>
+        <div class="service-instruction"><strong id="orderStatus">Ready to welcome customers</strong><p id="serviceHelp">Click a customer's coffee bubble to take an order.</p></div>
         <div id="customerControls" class="customer-controls" hidden>
           <div><span id="selectedCustomer">None</span><label for="selectedPatience" id="patienceLabel">Patience</label><progress id="selectedPatience" max="100" value="100">100%</progress></div>
-          <div class="guest-actions"><button id="priorityButton" onclick="prioritizeGuest()">Prioritize</button>
-          <button id="helpButton" onclick="helpWithDrink()">Make their drink</button></div>
           <button id="waterButton" onclick="offerWater()" title="Refills patience once per waiting customer for $2">Give water · $2</button>
           <span id="waterStatus" class="water-status" role="status"></span>
         </div>
@@ -127,9 +118,9 @@
           <div><span>Turned away</span><strong id="turnedAway">0</strong></div>
           <div><span>Noise level</span><strong id="noise">0</strong></div>
           <div><span>Visit satisfaction</span><strong><span id="liveSatisfaction">0</span>% <small>/ <span id="satisfactionGoal">70</span>%</small></strong></div>
-        </div><p class="muted">Happy visits and satisfaction count when customers finish their visit. Water costs are included in earnings. Happy visits build reputation with that crowd, which attracts future visitors.</p><label class="connection-toggle"><input type="checkbox" id="showConnections"> Show all customer connections</label><p class="muted">Nearby customers can encourage or distract one another. Sound panels soften distractions. New interactions appear briefly; select a customer to see their connections.</p></details>
+        </div><p class="muted">Happy visits and satisfaction count when customers finish their visit. Water costs are included in earnings.</p></details>
         <details id="eventHistory"><summary>Event history</summary><div id="eventLog"></div></details>
-        <details><summary>How to play</summary><p>Staff automatically take, prepare, and deliver orders. Select a guest to prioritize their waiting order or make their drink yourself: click the machine to brew, click it again when ready, then click the guest to deliver. A drink already assigned to staff cannot be taken over. Give tired staff a break; unfinished drinks return to the queue. Clean dirty tables by clicking them. Water restores a guest's patience once for $2. Latte earns $1 above your base price. Ana, Omar, and Iris remember completed visits across days. Energy and morale reset each morning; regular memories and café reputation persist.</p></details>
+        <details><summary>How to play</summary><p>Click a customer's coffee bubble to take an order. Drinks brew on their own, two at a time: click the machine to pick one up, then deliver it. Your staff pitch in; switch them between Counter and Floor. Click a dirty table to clean it. Select a waiting customer and give water to refill patience once for $2.</p></details>
       </div>
     </div>
   </section>

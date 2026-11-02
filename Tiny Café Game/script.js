@@ -12,7 +12,9 @@ const startingCafe = {
   sound: 0,
   price: 5,
   music: 3,
-  rep: { student: 0, social: 0, regular: 0 }
+  rep: { student: 0, social: 0, regular: 0 },
+  staff: [{ name: "Juno", speed: 1.3, sloppy: 0.25, warmth: 0 }],
+  regulars: {}   // returning customers remember how they were treated
 };
 
 let cafe;
@@ -25,21 +27,9 @@ try {
 } catch {
   cafe = { ...startingCafe };
 }
-// Older saves have no reputation. Accept only known groups and bounded scores.
-cafe.rep = Object.fromEntries(Object.keys(startingCafe.rep).map(type => {
-  const score = cafe.rep?.[type];
-  return [type, typeof score === "number" && Number.isFinite(score)
-    ? Math.max(0, Math.min(6, score)) : 0];
-}));
-
-// Regular memories survive new days and older save files.
-const regularNames = ["Ana", "Omar", "Iris"];
-cafe.memories = Object.fromEntries(regularNames.map(name => {
-  const old = cafe.memories?.[name];
-  return [name, { visits: Math.max(0, Number(old?.visits) || 0),
-    loyalty: Math.max(-3, Math.min(3, Number(old?.loyalty) || 0)),
-    last: ["happy", "unhappy", "unserved"].includes(old?.last) ? old.last : "new" }];
-}));
+cafe.rep = { ...startingCafe.rep, ...cafe.rep };
+cafe.staff = cafe.staff || [...startingCafe.staff];
+cafe.regulars = cafe.regulars || {};
 
 function saveGame() {
   try {
@@ -154,6 +144,10 @@ function buyUpgrade(item, cost) {
 
 function updateSetup() {
   document.getElementById("budget").textContent = cafe.budget;
+  document.getElementById("staffCount").textContent = cafe.staff.length;
+  const hire = document.getElementById("hireButton");
+  hire.disabled = cafe.staff.length >= 3 || cafe.budget < 60;
+  hire.textContent = cafe.staff.length >= 3 ? "Full" : "$60";
 
   ["tables", "wifi", "sound"].forEach(item => {
     document.getElementById(item).textContent = cafe[item];
@@ -188,27 +182,13 @@ document.getElementById("music").oninput = function() {
 };
 
 function updateIdentity() {
-  document.getElementById("identity").textContent = reputationSummary();
-  const effects = [];
-  if (cafe.wifi > 0) effects.push("Wi-Fi attracts students who stay longer.");
-  if (cafe.tables > 3) effects.push("Extra tables increase capacity.");
-  if (cafe.sound > 0) effects.push("Sound panels soften noise and nearby distractions.");
-  if (cafe.music >= 7) effects.push("Loud music attracts social customers.");
-  if (cafe.price >= 7) effects.push("High prices may turn away visitors.");
-  document.getElementById("prediction").textContent = effects.join(" ") ||
-    "Watch who stays and who leaves. Happy visits build your reputation with each crowd.";
-}
-
-function reputationSummary() {
-  const highest = Math.max(...Object.values(cafe.rep));
-  if (highest < 1) return "Your café is finding its crowd";
-  const leaders = Object.keys(cafe.rep).filter(type => cafe.rep[type] === highest);
-  if (leaders.length > 1) return "A reputation with a mixed crowd";
-  return {
-    student: "A reputation with students",
-    social: "A reputation with a lively crowd",
-    regular: "A reputation with your regulars"
-  }[leaders[0]];
+  const r = cafe.rep;
+  const top = Object.keys(r).sort((x, y) => r[y] - r[x])[0];
+  const leans = { student: "students", social: "a lively crowd", regular: "your regulars" };
+  document.getElementById("identity").textContent = "What your café is becoming";
+  document.getElementById("prediction").textContent = r[top] < 1
+    ? "Your café hasn't decided what it is yet. Watch who stays and who leaves."
+    : `Lately it leans toward ${leans[top]}. Whatever you change here pulls it somewhere.`;
 }
 
 // --------------------
@@ -298,9 +278,9 @@ let spawnTimer = 0;
 let lastFrame = 0;
 let animationFrameId = null;
 let customerNumber = 0;
-const names = ["Ana", "Leo", "Mara", "Sam", "Iris", "Theo", "Noor", "Jules", "Pia", "Omar"];
+const names = ["Ana", "Leo", "Mara", "Sam", "Iris", "Theo", "Noor", "Jules", "Pia", "Omar", "Lena", "Hugo", "Yara", "Ben", "Zoe", "Eli"];
 let links = [];          // live customer-to-customer effects, drawn in the room
-let seenLinks = new Map();
+let seenLinks = new Set();
 let story = [];          // cause-and-effect lines for the closing receipt
 
 let visitors = 0;
@@ -308,20 +288,8 @@ let sales = 0;
 let noise = 0;
 let selectedCustomer = null;
 
-const drinks = {
-  espresso: { name: "Espresso", seconds: 2.2, extra: 0 },
-  latte: { name: "Latte", seconds: 3.8, extra: 1 },
-  tea: { name: "Tea", seconds: 2.8, extra: 0 }
-};
-let staff = [];
-let orderQueue = [];
-let staffServed = 0;
-let playerServed = 0;
-let mistakes = 0;
-let managerViewTimer = 0;
-let currentOrder = null;
-let coffeeState = "idle";
-let brewTimer = 0;
+let tickets = [];   // orders: queued -> brewing -> ready -> carried
+let staff = [];     // today's working baristas
 
 // Outcome counters
 let outcomes;
@@ -351,16 +319,7 @@ async function startDay() {
   customers = [];
   dirtyTables = [];
 
-  timeLeft = 90;
-  orderQueue = [];
-  staffServed = 0;
-  playerServed = 0;
-  mistakes = 0;
-  managerViewTimer = 0;
-  staff = [
-    { name: "Max", trait: "Fast, sometimes sloppy", speed: 1.5, warmth: 0, error: 0.18, energy: 100, morale: 75, task: null, remaining: 0, rest: false },
-    { name: "Lina", trait: "Slow, warm service", speed: 0.85, warmth: 9, error: 0.02, energy: 100, morale: 85, task: null, remaining: 0, rest: false }
-  ];
+  timeLeft = 60;
   spawnTimer = 0;
   visitors = 0;
   sales = 0;
@@ -368,12 +327,12 @@ async function startDay() {
   selectedCustomer = null;
   customerNumber = 0;
   links = [];
-  seenLinks = new Map();
+  seenLinks = new Set();
   story = [];
 
-  currentOrder = null;
-  coffeeState = "idle";
-  brewTimer = 0;
+  tickets = [];
+  staff = cafe.staff.map(m => ({ ...m, role: "counter", energy: 100, cd: 2 }));
+  renderStaff();
 
   outcomes = {
     happy: 0,
@@ -419,7 +378,7 @@ async function startDay() {
   updateOrderStatus();
   updateLiveStats();
   drawCafe();
-  addEvent("The doors are open. Staff handle orders automatically. Prioritize guests, support staff, or jump in.");
+  addEvent("The doors are open. Click a customer’s coffee bubble to begin.");
 
   lastFrame = performance.now();
   animationFrameId = requestAnimationFrame(gameLoop);
@@ -450,6 +409,27 @@ function addEvent(message, warning = false) {
 // CUSTOMER ARRIVALS
 // --------------------
 
+function pickIdentity(type) {
+  const pick = list => list[Math.floor(Math.random() * list.length)];
+  const pref = { student: ["tea", "espresso", "tea"], social: ["latte", "latte", "espresso"], regular: Object.keys(drinks) }[type];
+  const here = customers.filter(c => !["leaving", "gone"].includes(c.state)).map(c => c.name);
+  if (type === "regular") {
+    const back = Object.entries(cafe.regulars).filter(([n, r]) => !here.includes(n) && r.mood > -2);
+    if (back.length && Math.random() < 0.6) {
+      const [name, r] = pick(back);
+      return { name, drink: r.drink, usual: r.visits >= 2, returning: true };
+    }
+    const fresh = names.find(n => !here.includes(n) && !cafe.regulars[n]);
+    if (fresh) {
+      const drink = pick(pref);
+      cafe.regulars[fresh] = { drink, visits: 0, mood: 0 };
+      return { name: fresh, drink };
+    }
+  }
+  const free = names.filter(n => !here.includes(n) && !cafe.regulars[n]);
+  return { name: pick(free.length ? free : ["Guest"]), drink: pick(pref) };
+}
+
 function createCustomer() {
   const choices = ["student", "social", "regular"];
 
@@ -468,11 +448,7 @@ function createCustomer() {
   customers.filter(c => !["leaving", "gone"].includes(c.state))
     .forEach(c => choices.push(c.type));
 
-  // Good memories increase regular visits; bad ones reduce their chance.
-  const loyalty = Object.values(cafe.memories).reduce((sum, m) => sum + m.loyalty, 0);
-  for (let i = 0; i < Math.max(0, loyalty); i++) choices.push("regular");
-  let type = choices[Math.floor(Math.random() * choices.length)];
-  if (type === "regular" && loyalty < 0 && Math.random() < 0.5) type = "social";
+  const type = choices[Math.floor(Math.random() * choices.length)];
 
   visitors++;
   arrivals[type]++;
@@ -512,16 +488,13 @@ function createCustomer() {
   const table = free[Math.floor(Math.random() * free.length)];
   const seat = tablePositions[table];
 
-  const id = customerNumber++;
-  const availableRegulars = regularNames.filter(name => !customers.some(c => c.name === name && c.state !== "gone"));
-  const regularName = type === "regular" && availableRegulars.length
-    ? availableRegulars[Math.floor(Math.random() * availableRegulars.length)] : null;
-  const drinkKeys = type === "student" ? ["tea", "latte"] : type === "social" ? ["latte", "espresso"] : ["espresso", "tea"];
+  const who = pickIdentity(type);
+
   customers.push({
-    id,
-    name: regularName || ["Leo", "Mara", "Sam", "Theo", "Noor", "Jules", "Pia"][id % 7] + ` ${id + 1}`,
-    regularName,
-    drink: drinkKeys[Math.floor(Math.random() * drinkKeys.length)],
+    id: customerNumber++,
+    name: who.name,
+    drink: who.drink,
+    usual: !!who.usual,
     type,
     table,
     x: entrance.x,
@@ -530,101 +503,186 @@ function createCustomer() {
     targetY: seat.y + seatOffset.y,
     state: "walking",
     timer: 0,
-    happiness: 75 + (regularName ? cafe.memories[regularName].loyalty * 3 : 0),
+    happiness: 75,
     patience: customerTypes[type].patience,
     outcomeRecorded: false,
     complaintMade: false,
     waterReceived: false,
-    waterFeedback: 0,
-    influences: {}
+    waterFeedback: 0
   });
 
-  const guest = customers[customers.length - 1];
-  addEvent(`${guest.name}, a ${type}, found a table.`);
-  if (regularName && cafe.memories[regularName].visits) {
-    const memory = cafe.memories[regularName];
-    addEvent(`${regularName} remembers their last ${memory.last === "happy" ? "happy visit" : memory.last === "unserved" ? "visit without service" : "unhappy visit"}.`);
-    recordInfluence(guest, "memory", memory.loyalty * 3, "memories of earlier visits");
-  }
+  addEvent(who.returning ? `${who.name} is back.` : `${who.name}, a ${type}, found a table.`);
 }
 
 // --------------------
 // COFFEE SERVICE
 // --------------------
 
+const drinks = {
+  espresso: { brew: 2, bonus: 0 },
+  latte: { brew: 4, bonus: 2 },
+  tea: { brew: 2.5, bonus: -1 }
+};
+const slotCount = 2;
+const hireable = [
+  { name: "Rue", speed: 0.8, sloppy: 0.05, warmth: 1.5 },
+  { name: "Kai", speed: 1.1, sloppy: 0.12, warmth: 0.7 }
+];
+const findCustomer = id => customers.find(c => c.id === id);
+const drinkPrice = drink => cafe.price + drinks[drink].bonus;
+
 function updateOrderStatus() {
-  const status = document.getElementById("orderStatus");
-  const help = document.getElementById("serviceHelp");
-
-  const messages = {
-    idle: ["Staff are handling the queue", "Select a guest to prioritize their order, offer water, or make their drink yourself."],
-    ordered: ["Order received", "Click the coffee machine to brew."],
-    brewing: ["Brewing...", "Your coffee is being prepared."],
-    ready: ["Coffee ready!", "Click the machine to pick it up."],
-    carrying: ["Coffee in hand", "Click the correct customer to deliver."]
-  };
-
-  const message = messages[coffeeState];
-
-  status.textContent =
-    coffeeState === "brewing"
-      ? `Brewing... ${Math.ceil(brewTimer)}s`
-      : message[0];
-
-  help.textContent = message[1];
+  const count = state => tickets.filter(t => t.state === state).length;
+  const carrying = tickets.find(t => t.state === "carried");
+  const who = carrying && findCustomer(carrying.id);
+  document.getElementById("orderStatus").textContent = who
+    ? `Carrying ${carrying.drink} for ${who.name}`
+    : `${count("queued")} queued · ${count("brewing")}/${slotCount} brewing · ${count("ready")} ready`;
+  document.getElementById("serviceHelp").textContent = who
+    ? "Click the right customer to deliver it."
+    : "Click a bubble to take an order. Drinks brew on their own; click the machine to pick one up.";
 }
 
-function takeOrder(customer) {
-  if (coffeeState !== "idle" || customer.state !== "waiting") return;
-
-  if (staff.some(person => person.task === customer.id)) return;
-  orderQueue = orderQueue.filter(id => id !== customer.id);
-  currentOrder = customer.id;
-  coffeeState = "ordered";
+function takeOrder(customer, by) {
+  if (customer.state !== "waiting" || tickets.some(t => t.id === customer.id)) return false;
+  tickets.push({ id: customer.id, drink: customer.drink, state: "queued", timer: 0 });
+  addEvent(`${by ? by.name + " took" : "You took"} ${customer.name}'s ${customer.drink} order.`);
   updateOrderStatus();
+  return true;
+}
 
-  addEvent(`You took ${customer.name}'s order.`);
+function startBrew() {
+  if (tickets.filter(t => t.state === "brewing").length >= slotCount) return false;
+  const t = tickets.find(x => x.state === "queued");
+  if (!t) return false;
+  t.state = "brewing";
+  t.timer = drinks[t.drink].brew;
+  return true;
+}
+
+function updateTickets(dt) {
+  customers.forEach(c => {
+    if (c.usual && !c.usualAsked && c.state === "waiting") {
+      c.usualAsked = true;
+      story.push(`${c.name} asked for the usual.`);
+      takeOrder(c);
+    }
+  });
+  tickets.forEach(t => {
+    if (t.state !== "brewing") return;
+    t.timer -= dt;
+    if (t.timer <= 0) t.state = "ready";
+  });
+  while (startBrew()) { /* fill every free slot */ }
+  updateOrderStatus();
 }
 
 function useCoffeeMachine() {
-  if (coffeeState === "ordered") {
-    coffeeState = "brewing";
-    const guest = customers.find(c => c.id === currentOrder);
-    brewTimer = drinks[guest.drink].seconds;
-    addEvent("Coffee is brewing.");
-  } else if (coffeeState === "ready") {
-    coffeeState = "carrying";
-    addEvent("Coffee picked up. Deliver it!");
-  }
-
+  if (tickets.some(t => t.state === "carried")) return;
+  const ready = tickets.find(t => t.state === "ready");
+  if (ready) ready.state = "carried";
   updateOrderStatus();
 }
 
-function deliverCoffee(customer) {
-  if (coffeeState !== "carrying") return;
-  if (currentOrder !== customer.id) return;
-  if (customer.state !== "waiting") return;
+function serve(customer, by) {
+  const ticket = tickets.find(t => t.id === customer.id);
+  tickets = tickets.filter(t => t !== ticket);
+  customer.state = "drinking";
+  customer.timer = 0;
 
-  serveDrink(customer);
-  playerServed++;
-
-  currentOrder = null;
-  coffeeState = "idle";
-
+  let boost = 15;
+  let tip = 0;
+  if (by && Math.random() < by.sloppy) {
+    boost = -10;
+    customer.cause = `${by.name} got the order wrong`;
+    story.push(`${by.name} mixed up ${customer.name}'s order.`);
+    addEvent(`${by.name} mixed up ${customer.name}'s order.`, true);
+  } else {
+    if (by) boost += by.warmth * 4;
+    const reg = cafe.regulars[customer.name];
+    if (reg && reg.drink === customer.drink && reg.visits >= 2) {
+      boost += 5;
+      tip = 1;
+      customer.boost = "they got their usual";
+    }
+  }
+  customer.happiness = Math.max(0, Math.min(100, customer.happiness + boost));
+  sales += drinkPrice(customer.drink) + tip;
+  addEvent(`${by ? by.name + " served" : "You served"} ${customer.name}. +$${drinkPrice(customer.drink) + tip}`);
   updateOrderStatus();
-  addEvent(`You delivered ${drinks[customer.drink].name.toLowerCase()} to ${customer.name}.`);
   updateCustomerControls();
 }
 
-function cancelOrder(id) {
-  orderQueue = orderQueue.filter(queued => queued !== id);
-  staff.forEach(person => { if (person.task === id) { person.task = null; person.remaining = 0; } });
-  if (currentOrder !== id) return;
+function deliverCoffee(customer) {
+  const ticket = tickets.find(t => t.state === "carried");
+  if (!ticket || ticket.id !== customer.id || customer.state !== "waiting") return;
+  serve(customer, null);
+}
 
-  currentOrder = null;
-  coffeeState = "idle";
-  brewTimer = 0;
+function cancelOrder(id) {
+  tickets = tickets.filter(t => t.id !== id);
   updateOrderStatus();
+}
+
+function describeStaff(m) {
+  return [m.speed > 1.15 ? "fast" : m.speed < 0.9 ? "careful" : "steady",
+    m.sloppy > 0.15 ? "sloppy" : "precise", m.warmth >= 1 ? "warm" : ""].filter(Boolean).join(", ");
+}
+
+function renderStaff() {
+  document.getElementById("staffRow").innerHTML = staff.map((m, i) =>
+    `<div class="staff"><b>${m.name}</b><small>${describeStaff(m)}</small>` +
+    `<button onclick="toggleRole(${i})">${m.role === "counter" ? "Counter" : "Floor"}</button>` +
+    `<progress id="st-e-${i}" max="100" value="${m.energy}"></progress></div>`).join("");
+}
+
+function toggleRole(i) {
+  staff[i].role = staff[i].role === "counter" ? "floor" : "counter";
+  addEvent(`${staff[i].name} moves to the ${staff[i].role}.`);
+  renderStaff();
+}
+
+function updateStaff(dt) {
+  staff.forEach((m, i) => {
+    m.cd -= dt * m.speed * (0.4 + 0.6 * m.energy / 100);
+    const bar = document.getElementById(`st-e-${i}`);
+    if (bar) bar.value = m.energy;
+    if (m.cd > 0) return;
+    m.cd = 3;
+    m.energy = Math.max(0, m.energy - 4);
+    const jobs = {
+      order: () => {
+        const c = customers.find(x => x.state === "waiting" && !tickets.some(t => t.id === x.id));
+        return c ? takeOrder(c, m) : false;
+      },
+      deliver: () => {
+        const t = tickets.find(x => x.state === "ready");
+        const c = t && findCustomer(t.id);
+        if (!c || c.state !== "waiting") return false;
+        serve(c, m);
+        return true;
+      },
+      clean: () => {
+        if (!dirtyTables.length) return false;
+        dirtyTables.shift();
+        addEvent(`${m.name} cleaned a table.`);
+        return true;
+      }
+    };
+    (m.role === "floor" ? ["deliver", "clean", "order"] : ["order", "deliver", "clean"]).some(k => jobs[k]());
+  });
+}
+
+function hireStaff() {
+  const msg = document.getElementById("message");
+  const next = hireable.find(h => !cafe.staff.some(m => m.name === h.name));
+  if (!next) { msg.textContent = "Your team is full."; return; }
+  if (cafe.budget < 60) { msg.textContent = "Not enough money!"; return; }
+  cafe.budget -= 60;
+  cafe.staff.push({ ...next });
+  saveGame();
+  updateSetup();
+  msg.textContent = `${next.name} joins the team.`;
 }
 
 // --------------------
@@ -656,7 +714,7 @@ function updateCustomerControls() {
   }
 
   document.getElementById("selectedCustomer").textContent =
-    `${customer.name} · ${drinks[customer.drink].name} · ${Math.round(customer.happiness)}% mood`;
+    `${customer.type} · ${Math.round(customer.happiness)}% mood`;
   const waiting = customer.state === "waiting";
   const remaining = waiting ? Math.max(0, 1 - customer.timer / customer.patience) : 1;
   const meter = document.getElementById("selectedPatience");
@@ -698,47 +756,26 @@ function offerWater() {
 
   sales -= 2;
   customer.timer = 0;
-  const previousMood = customer.happiness;
   customer.happiness = Math.min(100, customer.happiness + 20);
-  recordInfluence(customer, "water", customer.happiness - previousMood, "water and a little extra care");
   customer.waterReceived = true;
   customer.waterFeedback = 2;
   effects.waterGiven++;
   updateLiveStats();
   drawCafe();
   drawCustomers();
-  addEvent(`Water for ${customer.name}. Patience fully restored. −$2`);
+  addEvent(`Water for the ${customer.type}. Patience fully restored. −$2`);
 }
 
 // --------------------
 // CUSTOMER OUTCOMES
 // --------------------
 
-function recordInfluence(customer, category, amount, reason) {
-  customer.influences ||= {};
-  const effect = customer.influences[category] || { amount: 0, reason };
-  effect.amount += amount;
-  effect.reason = reason;
-  customer.influences[category] = effect;
-}
-
-function adjustRep(customer, outcome) {
-  const happy = outcome === "happy";
-  const amount = happy ? 0.5 : -0.3;
-  const score = cafe.rep[customer.type] + amount;
-  cafe.rep[customer.type] = Math.round(Math.max(0, Math.min(6, score)) * 10) / 10;
-
-  // A timeout is always an unserved visit, even if neighbours also annoyed them.
-  if (outcome === "unserved") {
-    story.push(`${customer.name} (${customer.type}) left without coffee because they waited too long.`);
-    return;
-  }
-  const influences = Object.values(customer.influences)
-    .filter(effect => happy ? effect.amount > 0 : effect.amount < 0)
-    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
-  const influence = influences[0];
-  story.push(`${customer.name} (${customer.type}) left ${happy ? "happy" : "unhappy"}.` +
-    (influence ? ` ${happy ? "What helped" : "What bothered them"}: ${influence.reason}.` : ""));
+function adjustRep(customer, amount, fallback) {
+  const r = cafe.rep;
+  r[customer.type] = Math.max(0, Math.min(6, r[customer.type] + amount));
+  story.push(amount > 0
+    ? `${customer.name} (${customer.type}) left happy${customer.boost ? " because " + customer.boost : ""}.`
+    : `${customer.name} (${customer.type}) left unhappy because ${customer.cause || fallback}.`);
 }
 
 function recordOutcome(customer, outcome) {
@@ -746,14 +783,6 @@ function recordOutcome(customer, outcome) {
 
   customer.outcomeRecorded = true;
   outcomes[outcome]++;
-  adjustRep(customer, outcome);
-  if (customer.regularName) {
-    const memory = cafe.memories[customer.regularName];
-    memory.visits++;
-    memory.last = outcome;
-    memory.loyalty = Math.max(-3, Math.min(3, memory.loyalty + (outcome === "happy" ? 1 : -1)));
-    story.push(`${customer.name} will remember this ${outcome} visit. Loyalty: ${memory.loyalty}.`);
-  }
 
   // Only customers who actually sat down contribute reviews
   satisfactionTotal += Math.max(0, Math.min(100, customer.happiness));
@@ -769,16 +798,25 @@ function leaveCustomer(customer) {
     const outcome = customer.happiness >= 60 ? "happy" : "unhappy";
 
     recordOutcome(customer, outcome);
+    adjustRep(customer, outcome === "happy" ? 0.5 : -0.3, "the visit fell flat");
 
     addEvent(
       outcome === "happy"
-        ? `${customer.name} finished their visit happy.`
-        : `${customer.name} finished their visit unhappy.`,
+        ? `A satisfied ${customer.type} finished and left. ♥`
+        : `A ${customer.type} finished but was unhappy.`,
       outcome === "unhappy"
     );
   } else {
     recordOutcome(customer, "unserved");
-    addEvent(`${customer.name} left without being served.`, true);
+    adjustRep(customer, -0.3, "they waited too long");
+    addEvent(`A ${customer.type} left without being served.`, true);
+  }
+
+  const reg = cafe.regulars[customer.name];
+  if (reg && customer.type === "regular") {
+    reg.visits++;
+    reg.mood += wasServed && customer.happiness >= 60 ? 1 : -1;
+    if (reg.mood < -1) story.push(`${customer.name} may not come back.`);
   }
 
   cancelOrder(customer.id);
@@ -802,13 +840,13 @@ function leaveCustomer(customer) {
 // --------------------
 
 function addLink(a, b, kind, text) {
-  const key = kind + ":" + [a.id, b.id].sort((x, y) => x - y).join("-");
+  links.push({ a, b, kind });
+  const key = kind + [a.id, b.id].sort().join("-");
   if (!seenLinks.has(key)) {
-    seenLinks.set(key, timeLeft);
+    seenLinks.add(key);
     story.push(text);
     addEvent(text, kind === "annoy");
   }
-  links.push({ a, b, kind, startedAt: seenLinks.get(key) });
 }
 
 // Seated customers affect whoever sits near them; the effects feed reputation.
@@ -826,18 +864,16 @@ function applyNeighborEffects(inside, dt) {
         const [loud] = social, [quiet] = students;
         quiet.happiness -= 2.5 * dt * damp;
         loud.happiness += 0.8 * dt;
-        recordInfluence(quiet, "neighbours", -2.5 * dt * damp, `${loud.name}'s lively table nearby`);
-        recordInfluence(loud, "company", 0.8 * dt, "the room's lively energy");
+        quiet.cause = `${loud.name}'s lively table sat too close`;
+        loud.boost = "the room had energy";
         addLink(a, b, "annoy", `${quiet.name} is distracted by ${loud.name}'s table.`);
       } else if (social.length === 2 || (a.type === "regular" && b.type === "regular")) {
         a.happiness += 0.8 * dt; b.happiness += 0.8 * dt;
-        recordInfluence(a, "company", 0.8 * dt, "good company nearby");
-        recordInfluence(b, "company", 0.8 * dt, "good company nearby");
+        a.boost = b.boost = "good company was nearby";
         addLink(a, b, "buzz", `${a.name} and ${b.name} are hitting it off.`);
       } else if (students.length === 2) {
         a.happiness += 0.4 * dt; b.happiness += 0.4 * dt;
-        recordInfluence(a, "company", 0.4 * dt, "studying beside another student");
-        recordInfluence(b, "company", 0.4 * dt, "studying beside another student");
+        a.boost = b.boost = "the quiet suited studying";
         addLink(a, b, "buzz", `${a.name} and ${b.name} are studying side by side.`);
       }
     }
@@ -874,8 +910,6 @@ function updateCustomers(dt) {
         c.y = c.targetY;
         c.state = "waiting";
         c.timer = 0;
-        orderQueue.push(c.id);
-        addEvent(`${c.name} ordered ${drinks[c.drink].name.toLowerCase()}.`);
       } else {
         const step = Math.min(distance, 110 * dt);
         c.x += dx / distance * step;
@@ -886,7 +920,6 @@ function updateCustomers(dt) {
     else if (c.state === "waiting") {
       c.timer += dt;
       c.happiness -= 1.5 * dt;
-      recordInfluence(c, "waiting", -1.5 * dt, "the wait for coffee");
 
       if (c.timer >= c.patience) {
         c.happiness -= 20;
@@ -900,18 +933,16 @@ function updateCustomers(dt) {
       // Noise affects customers differently
       if (noise > traits.noiseTolerance) {
         c.happiness -= 4 * dt;
-        recordInfluence(c, "noise", -4 * dt, "the café's noise level");
 
         if (!c.complaintMade && c.timer > 2) {
           c.complaintMade = true;
           effects.noiseComplaints++;
-          addEvent(`${c.name} thinks the café is too noisy.`, true);
+          addEvent(`A ${c.type} thinks the café is too noisy!`, true);
         }
       }
 
       if (c.type === "student" && cafe.wifi > 0) {
         c.happiness += 0.4 * dt;
-        recordInfluence(c, "wifi", 0.4 * dt, "Wi-Fi for studying");
       }
 
       let stayTime = traits.stay;
@@ -990,8 +1021,10 @@ canvas.addEventListener("click", event => {
     if (clickedBody || clickedBubble) {
       selectedCustomer = c.id;
 
-      if (coffeeState === "carrying") {
+      if (tickets.some(t => t.state === "carried")) {
         deliverCoffee(c);
+      } else {
+        takeOrder(c);
       }
       updateCustomerControls();
       return;
@@ -1080,9 +1113,9 @@ function drawCafe(target = canvas, preview = false) {
     }
   }
 
-  if (!preview && coffeeState !== "idle") {
+  if (!preview && tickets.some(t => t.state !== "queued")) {
     const machine = coffeeMachineArea;
-    context.strokeStyle = coffeeState === "ready" ? "#f4d183" : "#fffaf3";
+    context.strokeStyle = tickets.some(t => t.state === "ready") ? "#f4d183" : "#fffaf3";
     context.lineWidth = 2;
     context.strokeRect(machine.x - 3, machine.y - 3, machine.width + 6, machine.height + 6);
   }
@@ -1109,57 +1142,46 @@ function updateSetupPreview() {
 
 function drawCustomerBody(c, context) {
   if (selectedCustomer === c.id) drawCircle(c.x, c.y, 23, "#ffffff", context);
-  if (["waiting", "drinking"].includes(c.state)) {
-    context.strokeStyle = c.happiness >= 60 ? "#7c8758" : c.happiness > 40 ? "#d6b274" : "#b66f51";
-    context.lineWidth = 2;
-    context.beginPath();
-    context.arc(c.x, c.y, 21, 0, Math.PI * 2);
-    context.stroke();
-  }
   drawCircle(c.x, c.y, 18, customerTypes[c.type].color, context);
   drawCircle(c.x - 5, c.y - 3, 2, "#49372e", context);
   drawCircle(c.x + 5, c.y - 3, 2, "#49372e", context);
 }
 
 function drawCustomers() {
-  const showAll = document.getElementById("showConnections").checked;
-  links.forEach(({ a, b, kind, startedAt }) => {
-    if (![a, b].every(c => ["waiting", "drinking"].includes(c.state))) return;
-    // Briefly show new interactions; selection or the detail toggle reveals more.
-    if (!showAll && selectedCustomer !== a.id && selectedCustomer !== b.id &&
-        startedAt - timeLeft > 2.5) return;
-    ctx.save();
+  links.forEach(({ a, b, kind }) => {
     ctx.strokeStyle = kind === "annoy" ? "#b66f51" : "#7c8758";
-    ctx.globalAlpha = 0.7;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 2;
     ctx.setLineDash([6, 5]);
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.font = "14px Georgia";
-    ctx.fillStyle = ctx.strokeStyle;
+    ctx.font = "16px Georgia";
     ctx.textAlign = "center";
-    ctx.fillText(kind === "annoy" ? "!" : "+", (a.x + b.x) / 2, (a.y + b.y) / 2 + 6);
-    ctx.restore();
+    ctx.fillText(kind === "annoy" ? "💢" : "✨", (a.x + b.x) / 2, (a.y + b.y) / 2 + 6);
   });
 
   customers.forEach(c => {
     ctx.textAlign = "center";
 
-    if (["waiting", "drinking"].includes(c.state) && (showAll || selectedCustomer === c.id)) {
-      ctx.fillStyle = "#fffaf0";
-      ctx.fillRect(c.x - 28, c.y + 32, 56, 16);
-      ctx.font = "11px sans-serif";
+    if (["waiting", "drinking"].includes(c.state)) {
+      ctx.strokeStyle = c.happiness > 65 ? "#7c8758" : c.happiness > 40 ? "#d6b274" : "#b66f51";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 21, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.font = "10px sans-serif";
       ctx.fillStyle = "#3d3025";
-      ctx.fillText(c.name, c.x, c.y + 40);
+      const tk = tickets.find(t => t.id === c.id);
+      const mark = c.state === "drinking" ? "" : tk ? { queued: " …", brewing: " ♨", ready: " ✔", carried: " ➜" }[tk.state] : " ?";
+      ctx.fillText(`${c.name} · ${c.drink}${mark}`, c.x, c.y + 40);
     }
 
     if (c.state === "waiting") {
       drawCircle(c.x, c.y - 35, 17, "#fffaf3");
       ctx.font = "18px Georgia";
-      ctx.fillText(c.waterFeedback > 0 ? "💧" : c.drink === "tea" ? "🍵" : "☕", c.x, c.y - 29);
+      ctx.fillText(c.waterFeedback > 0 ? "💧" : "☕", c.x, c.y - 29);
 
       // Patience indicator
       const remaining = Math.max(0, 1 - c.timer / c.patience);
@@ -1208,18 +1230,10 @@ function gameLoop(now) {
     spawnTimer = 0;
   }
 
-  if (coffeeState === "brewing") {
-    brewTimer -= dt;
-
-    if (brewTimer <= 0) {
-      coffeeState = "ready";
-      addEvent("Coffee ready! Pick it up.");
-    }
-    updateOrderStatus();
-  }
+  updateTickets(dt);
+  updateStaff(dt);
 
   updateCustomers(dt);
-  updateStaff(dt);
   drawCafe();
   drawCustomers();
 
@@ -1239,14 +1253,8 @@ function updateIdentityBar() {
   });
   for (const t of Object.keys(room)) {
     const el = document.getElementById(`id-${t}`);
-    el.style.flexGrow = 0.4 + cafe.rep[t] + room[t];
+    if (el) el.style.flexGrow = 0.4 + cafe.rep[t] + room[t];
   }
-  const labels = { student: "Students", social: "Social visitors", regular: "Regulars" };
-  const description = Object.keys(room).map(type =>
-    `${labels[type]}: ${room[type]} inside, reputation ${cafe.rep[type].toFixed(1)} out of 6`
-  ).join(". ");
-  const track = document.getElementById("identityTrack");
-  if (track.getAttribute("aria-label") !== description) track.setAttribute("aria-label", description);
 }
 
 function updateLiveStats() {
@@ -1262,7 +1270,6 @@ function updateLiveStats() {
     ? Math.round(satisfactionTotal / completedVisits) : 0;
   document.querySelector(".time-stat").classList.toggle("is-urgent", timeLeft <= 10);
   updateCustomerControls();
-  updateManagerPanel();
 }
 
 function renderResultGoals(mission, satisfaction) {
@@ -1350,9 +1357,7 @@ Still inside at closing: ${unfinished}`;
 Price refusals: ${effects.priceRefusals}
 No available tables: ${effects.noSeats}
 Noise complaints: ${effects.noiseComplaints}
-Free water offered: ${effects.waterGiven}
-Staff drinks: ${staffServed} · Your drinks: ${playerServed}
-Drinks remade: ${mistakes}`;
+Free water offered: ${effects.waterGiven}`;
 
   document.getElementById("resultIdentity").textContent =
     `Your café became ${identity}.
@@ -1360,8 +1365,9 @@ Students: ${arrivals.student}
 Social customers: ${arrivals.social}
 Regulars: ${arrivals.regular}`;
 
+  const lean = Object.keys(cafe.rep).sort((x, y) => cafe.rep[y] - cafe.rep[x])[0];
   document.getElementById("resultIdentity").textContent +=
-    `\n${reputationSummary()}.\nReputation (out of 6): students ${cafe.rep.student.toFixed(1)}, social visitors ${cafe.rep.social.toFixed(1)}, regulars ${cafe.rep.regular.toFixed(1)}.`;
+    `\nReputation now leans toward: ${cafe.rep[lean] >= 1 ? lean + "s" : "nobody yet"}`;
   document.getElementById("resultStory").textContent =
     story.slice(-12).join("\n") || "A quiet day. Nothing out of the ordinary.";
 
@@ -1374,116 +1380,6 @@ Regulars: ${arrivals.regular}`;
 
 function nextDay() {
   showScreen("scenario");
-}
-
-// --------------------
-// STAFF AND SHARED ORDER QUEUE
-// --------------------
-
-function serveDrink(customer, person = null) {
-  customer.state = "drinking";
-  customer.timer = 0;
-  const before = customer.happiness;
-  customer.happiness = Math.min(100, before + 15 + (person?.warmth || 0));
-  recordInfluence(customer, "service", customer.happiness - before,
-    person?.warmth ? `${person.name}'s warm service` : "their drink arriving");
-  sales += cafe.price + drinks[customer.drink].extra;
-  if (person) {
-    staffServed++;
-    addEvent(`${person.name} served ${customer.name}'s ${drinks[customer.drink].name.toLowerCase()}${person.warmth ? " with a warm welcome" : ""}.`);
-  }
-}
-
-function updateStaff(dt) {
-  orderQueue = orderQueue.filter(id => customers.some(c => c.id === id && c.state === "waiting"));
-  for (const person of staff) {
-    if (person.rest) {
-      person.energy = Math.min(100, person.energy + 8 * dt);
-      person.morale = Math.min(100, person.morale + 3 * dt);
-      continue;
-    }
-    if (person.task !== null) {
-      const guest = customers.find(c => c.id === person.task && c.state === "waiting");
-      if (!guest) { person.task = null; continue; }
-      person.energy = Math.max(0, person.energy - 2 * dt);
-      person.morale = Math.max(0, person.morale - (orderQueue.length > 1 ? 0.9 : 0.15) * dt);
-      person.remaining -= dt * person.speed * (0.5 + person.energy / 200) * (0.75 + person.morale / 400);
-      if (person.remaining > 0) continue;
-      const risk = person.error + (person.energy < 30 ? 0.15 : 0) + (person.morale < 30 ? 0.1 : 0);
-      if (!guest.remade && Math.random() < risk) {
-        guest.remade = true;
-        guest.happiness = Math.max(0, guest.happiness - 10);
-        recordInfluence(guest, "mistake", -10, `${person.name}'s drink needing a remake`);
-        person.remaining = drinks[guest.drink].seconds * 0.7;
-        mistakes++;
-        const message = `${person.name} remakes ${guest.name}'s drink${person.energy < 30 ? " while exhausted" : " after a mistake"}. The extra wait hurts their mood.`;
-        story.push(message);
-        addEvent(message, true);
-      } else {
-        serveDrink(guest, person);
-        person.task = null;
-      }
-    }
-    if (person.task === null && orderQueue.length) {
-      person.task = orderQueue.shift();
-      const guest = customers.find(c => c.id === person.task);
-      person.remaining = drinks[guest.drink].seconds;
-    } else if (person.task === null) {
-      person.energy = Math.min(100, person.energy + dt);
-    }
-  }
-  managerViewTimer -= dt;
-}
-
-function toggleBreak(index) {
-  if (!running || !staff[index]) return;
-  const person = staff[index];
-  if (!person.rest && person.task !== null) {
-    orderQueue.unshift(person.task);
-    person.task = null;
-  }
-  person.rest = !person.rest;
-  addEvent(`${person.name} ${person.rest ? "takes a break; the other barista carries the queue" : "returns to the counter"}.`);
-  managerViewTimer = 0;
-  updateManagerPanel();
-}
-
-function prioritizeGuest() {
-  if (!running) return;
-  const index = orderQueue.indexOf(selectedCustomer);
-  if (index < 0) return;
-  orderQueue.unshift(...orderQueue.splice(index, 1));
-  addEvent(`${customers.find(c => c.id === selectedCustomer).name}'s order moved to the front.`);
-  managerViewTimer = 0;
-}
-
-function helpWithDrink() {
-  if (!running) return;
-  const guest = customers.find(c => c.id === selectedCustomer);
-  if (guest) takeOrder(guest);
-  managerViewTimer = 0;
-}
-
-function updateManagerPanel() {
-  const guest = customers.find(c => c.id === selectedCustomer && c.state === "waiting");
-  document.getElementById("priorityButton").disabled = !guest || !orderQueue.includes(guest.id);
-  document.getElementById("helpButton").disabled = !guest || coffeeState !== "idle" || staff.some(p => p.task === guest.id);
-  if (managerViewTimer > 0) return;
-  managerViewTimer = 0.25;
-  const staffCards = document.getElementById("staffCards");
-  if (staffCards.contains(document.activeElement)) return;
-  staffCards.innerHTML = staff.map((person, i) => {
-    const task = customers.find(c => c.id === person.task);
-    return `<article class="staff-card"><div><strong>${person.name}</strong><small>${person.trait}</small></div>
-      <p>${person.rest ? "On break" : task ? `${drinks[task.drink].name} → ${task.name}` : "Ready for orders"}</p>
-      <label>Energy ${Math.round(person.energy)}%<progress max="100" value="${person.energy}"></progress></label>
-      <label>Morale ${Math.round(person.morale)}%<progress max="100" value="${person.morale}"></progress></label>
-      <button onclick="toggleBreak(${i})">${person.rest ? "Return to work" : "Give a break"}</button></article>`;
-  }).join("");
-  document.getElementById("orderQueue").textContent = orderQueue.map(id => {
-    const c = customers.find(c => c.id === id);
-    return `${c.name}: ${drinks[c.drink].name}`;
-  }).join(" → ") || "No orders waiting.";
 }
 
 // Begin with today's mission before preparing the café.
