@@ -92,6 +92,13 @@
       <main class="cafe-area">
         <canvas id="cafeCanvas" width="1000" height="542" aria-label="Click a seated customer to order, the counter's coffee machine to brew, and dirty tables to clean them"></canvas>
       </main>
+      <div class="identity-bar" title="Your current crowd and reputation shape who arrives next.">
+        <span>Café character</span>
+        <div id="identityTrack" class="identity-track" role="img" aria-label="Customer mix and reputation">
+          <i id="id-student"></i><i id="id-social"></i><i id="id-regular"></i>
+        </div>
+        <span class="identity-legend"><span>Students</span><span>Social</span><span>Regulars</span></span>
+      </div>
       <div class="service-dock">
         <div class="service-instruction"><strong id="orderStatus">Ready to welcome customers</strong><p id="serviceHelp">Click a customer's coffee bubble to take an order.</p></div>
         <div id="customerControls" class="customer-controls" hidden>
@@ -111,9 +118,9 @@
           <div><span>Turned away</span><strong id="turnedAway">0</strong></div>
           <div><span>Noise level</span><strong id="noise">0</strong></div>
           <div><span>Visit satisfaction</span><strong><span id="liveSatisfaction">0</span>% <small>/ <span id="satisfactionGoal">70</span>%</small></strong></div>
-        </div><p class="muted">Happy visits and satisfaction count when customers finish their visit. Water costs are included in earnings.</p></details>
+        </div><p class="muted">Happy visits and satisfaction count when customers finish their visit. Water costs are included in earnings. Happy visits build reputation with that crowd, which attracts future visitors.</p><label class="connection-toggle"><input type="checkbox" id="showConnections"> Show all customer connections</label><p class="muted">Nearby customers can encourage or distract one another. Sound panels soften distractions. New interactions appear briefly; select a customer to see their connections.</p></details>
         <details id="eventHistory"><summary>Event history</summary><div id="eventLog"></div></details>
-        <details><summary>How to play</summary><p>Click a customer's coffee bubble, then the machine on the counter to brew. Click the machine again when ready, then deliver to that customer. Click a dirty table to clean it. Select a waiting customer and give water to refill patience once for $2.</p></details>
+        <details><summary>How to play</summary><p>Click a customer's coffee bubble, then the machine on the counter to brew. Click the machine again when ready, then deliver to that customer. Click a dirty table to clean it. Select a waiting customer and give water to refill patience once for $2. Nearby customers affect each other's mood, and completed visits shape your café's reputation.</p></details>
       </div>
     </div>
   </section>
@@ -130,6 +137,7 @@
         <h2>Customer visits</h2><p id="resultCustomers"></p>
         <h2>Your choices & their effects</h2><p id="resultEffects"></p>
         <h2>Your café's character</h2><p id="resultIdentity"></p>
+        <h2>What happened, and why</h2><p id="resultStory"></p>
       </details>
       <button class="primary" onclick="nextDay()">A new day <span aria-hidden="true">→</span></button>
     </main>

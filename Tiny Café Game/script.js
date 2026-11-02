@@ -11,7 +11,8 @@ const startingCafe = {
   wifi: 0,
   sound: 0,
   price: 5,
-  music: 3
+  music: 3,
+  rep: { student: 0, social: 0, regular: 0 }
 };
 
 let cafe;
@@ -24,6 +25,12 @@ try {
 } catch {
   cafe = { ...startingCafe };
 }
+// Older saves have no reputation. Accept only known groups and bounded scores.
+cafe.rep = Object.fromEntries(Object.keys(startingCafe.rep).map(type => {
+  const score = cafe.rep?.[type];
+  return [type, typeof score === "number" && Number.isFinite(score)
+    ? Math.max(0, Math.min(6, score)) : 0];
+}));
 
 function saveGame() {
   try {
@@ -172,28 +179,27 @@ document.getElementById("music").oninput = function() {
 };
 
 function updateIdentity() {
+  document.getElementById("identity").textContent = reputationSummary();
   const effects = [];
+  if (cafe.wifi > 0) effects.push("Wi-Fi attracts students who stay longer.");
+  if (cafe.tables > 3) effects.push("Extra tables increase capacity.");
+  if (cafe.sound > 0) effects.push("Sound panels soften noise and nearby distractions.");
+  if (cafe.music >= 7) effects.push("Loud music attracts social customers.");
+  if (cafe.price >= 7) effects.push("High prices may turn away visitors.");
+  document.getElementById("prediction").textContent = effects.join(" ") ||
+    "Watch who stays and who leaves. Happy visits build your reputation with each crowd.";
+}
 
-  if (cafe.wifi > 0)
-    effects.push("Wi-Fi may attract long-staying students.");
-
-  if (cafe.tables > 3)
-    effects.push("Extra tables increase capacity.");
-
-  if (cafe.sound > 0)
-    effects.push("Sound panels reduce noise.");
-
-  if (cafe.music >= 7)
-    effects.push("Loud music attracts social customers.");
-
-  if (cafe.price >= 7)
-    effects.push("High prices may turn away visitors.");
-
-  document.getElementById("identity").textContent =
-    "The atmosphere you’re creating";
-
-  document.getElementById("prediction").textContent =
-    effects.join(" ") || "A small, simple neighborhood café.";
+function reputationSummary() {
+  const highest = Math.max(...Object.values(cafe.rep));
+  if (highest < 1) return "Your café is finding its crowd";
+  const leaders = Object.keys(cafe.rep).filter(type => cafe.rep[type] === highest);
+  if (leaders.length > 1) return "A reputation with a mixed crowd";
+  return {
+    student: "A reputation with students",
+    social: "A reputation with a lively crowd",
+    regular: "A reputation with your regulars"
+  }[leaders[0]];
 }
 
 // --------------------
@@ -283,6 +289,10 @@ let spawnTimer = 0;
 let lastFrame = 0;
 let animationFrameId = null;
 let customerNumber = 0;
+const names = ["Ana", "Leo", "Mara", "Sam", "Iris", "Theo", "Noor", "Jules", "Pia", "Omar"];
+let links = [];          // live customer-to-customer effects, drawn in the room
+let seenLinks = new Map();
+let story = [];          // cause-and-effect lines for the closing receipt
 
 let visitors = 0;
 let sales = 0;
@@ -328,6 +338,9 @@ async function startDay() {
   noise = 0;
   selectedCustomer = null;
   customerNumber = 0;
+  links = [];
+  seenLinks = new Map();
+  story = [];
 
   currentOrder = null;
   coffeeState = "idle";
@@ -419,6 +432,13 @@ function createCustomer() {
     choices.push("social", "social", "social");
   }
 
+  // Reputation and the room's current mix feed back into who walks in next
+  for (const t of Object.keys(cafe.rep)) {
+    for (let i = 0; i < Math.round(cafe.rep[t]); i++) choices.push(t);
+  }
+  customers.filter(c => !["leaving", "gone"].includes(c.state))
+    .forEach(c => choices.push(c.type));
+
   const type = choices[Math.floor(Math.random() * choices.length)];
 
   visitors++;
@@ -459,8 +479,10 @@ function createCustomer() {
   const table = free[Math.floor(Math.random() * free.length)];
   const seat = tablePositions[table];
 
+  const id = customerNumber++;
   customers.push({
-    id: customerNumber++,
+    id,
+    name: names[id % names.length],
     type,
     table,
     x: entrance.x,
@@ -474,10 +496,11 @@ function createCustomer() {
     outcomeRecorded: false,
     complaintMade: false,
     waterReceived: false,
-    waterFeedback: 0
+    waterFeedback: 0,
+    influences: {}
   });
 
-  addEvent(`A ${type} found a table.`);
+  addEvent(`${customers[customers.length - 1].name}, a ${type}, found a table.`);
 }
 
 // --------------------
@@ -513,7 +536,7 @@ function takeOrder(customer) {
   coffeeState = "ordered";
   updateOrderStatus();
 
-  addEvent(`You took a ${customer.type}'s order.`);
+  addEvent(`You took ${customer.name}'s order.`);
 }
 
 function useCoffeeMachine() {
@@ -536,7 +559,9 @@ function deliverCoffee(customer) {
 
   customer.state = "drinking";
   customer.timer = 0;
+  const previousMood = customer.happiness;
   customer.happiness = Math.min(100, customer.happiness + 15);
+  recordInfluence(customer, "service", customer.happiness - previousMood, "coffee being served");
 
   sales += cafe.price;
 
@@ -544,7 +569,7 @@ function deliverCoffee(customer) {
   coffeeState = "idle";
 
   updateOrderStatus();
-  addEvent(`You served a ${customer.type}. +$${cafe.price}`);
+  addEvent(`Coffee for ${customer.name}. +$${cafe.price}`);
   updateCustomerControls();
 }
 
@@ -586,7 +611,7 @@ function updateCustomerControls() {
   }
 
   document.getElementById("selectedCustomer").textContent =
-    `${customer.type} · ${Math.round(customer.happiness)}% mood`;
+    `${customer.name} · ${customer.type} · ${Math.round(customer.happiness)}% mood`;
   const waiting = customer.state === "waiting";
   const remaining = waiting ? Math.max(0, 1 - customer.timer / customer.patience) : 1;
   const meter = document.getElementById("selectedPatience");
@@ -628,25 +653,55 @@ function offerWater() {
 
   sales -= 2;
   customer.timer = 0;
+  const previousMood = customer.happiness;
   customer.happiness = Math.min(100, customer.happiness + 20);
+  recordInfluence(customer, "water", customer.happiness - previousMood, "water and a little extra care");
   customer.waterReceived = true;
   customer.waterFeedback = 2;
   effects.waterGiven++;
   updateLiveStats();
   drawCafe();
   drawCustomers();
-  addEvent(`Water for the ${customer.type}. Patience fully restored. −$2`);
+  addEvent(`Water for ${customer.name}. Patience fully restored. −$2`);
 }
 
 // --------------------
 // CUSTOMER OUTCOMES
 // --------------------
 
+function recordInfluence(customer, category, amount, reason) {
+  customer.influences ||= {};
+  const effect = customer.influences[category] || { amount: 0, reason };
+  effect.amount += amount;
+  effect.reason = reason;
+  customer.influences[category] = effect;
+}
+
+function adjustRep(customer, outcome) {
+  const happy = outcome === "happy";
+  const amount = happy ? 0.5 : -0.3;
+  const score = cafe.rep[customer.type] + amount;
+  cafe.rep[customer.type] = Math.round(Math.max(0, Math.min(6, score)) * 10) / 10;
+
+  // A timeout is always an unserved visit, even if neighbours also annoyed them.
+  if (outcome === "unserved") {
+    story.push(`${customer.name} (${customer.type}) left without coffee because they waited too long.`);
+    return;
+  }
+  const influences = Object.values(customer.influences)
+    .filter(effect => happy ? effect.amount > 0 : effect.amount < 0)
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+  const influence = influences[0];
+  story.push(`${customer.name} (${customer.type}) left ${happy ? "happy" : "unhappy"}.` +
+    (influence ? ` ${happy ? "What helped" : "What bothered them"}: ${influence.reason}.` : ""));
+}
+
 function recordOutcome(customer, outcome) {
   if (customer.outcomeRecorded) return;
 
   customer.outcomeRecorded = true;
   outcomes[outcome]++;
+  adjustRep(customer, outcome);
 
   // Only customers who actually sat down contribute reviews
   satisfactionTotal += Math.max(0, Math.min(100, customer.happiness));
@@ -665,13 +720,13 @@ function leaveCustomer(customer) {
 
     addEvent(
       outcome === "happy"
-        ? `A satisfied ${customer.type} finished and left. ♥`
-        : `A ${customer.type} finished but was unhappy.`,
+        ? `${customer.name} finished their visit happy.`
+        : `${customer.name} finished their visit unhappy.`,
       outcome === "unhappy"
     );
   } else {
     recordOutcome(customer, "unserved");
-    addEvent(`A ${customer.type} left without being served.`, true);
+    addEvent(`${customer.name} left without being served.`, true);
   }
 
   cancelOrder(customer.id);
@@ -694,6 +749,49 @@ function leaveCustomer(customer) {
 // CUSTOMER BEHAVIOR
 // --------------------
 
+function addLink(a, b, kind, text) {
+  const key = kind + ":" + [a.id, b.id].sort((x, y) => x - y).join("-");
+  if (!seenLinks.has(key)) {
+    seenLinks.set(key, timeLeft);
+    story.push(text);
+    addEvent(text, kind === "annoy");
+  }
+  links.push({ a, b, kind, startedAt: seenLinks.get(key) });
+}
+
+// Seated customers affect whoever sits near them; the effects feed reputation.
+function applyNeighborEffects(inside, dt) {
+  links = [];
+  const damp = Math.max(0.3, 1 - cafe.sound * 0.2);
+  const seated = inside.filter(c => ["waiting", "drinking"].includes(c.state));
+  for (let i = 0; i < seated.length; i++) {
+    for (let j = i + 1; j < seated.length; j++) {
+      const a = seated[i], b = seated[j];
+      if (Math.hypot(a.x - b.x, a.y - b.y) > 270) continue;
+      const social = [a, b].filter(c => c.type === "social");
+      const students = [a, b].filter(c => c.type === "student");
+      if (social.length === 1 && students.length === 1) {
+        const [loud] = social, [quiet] = students;
+        quiet.happiness -= 2.5 * dt * damp;
+        loud.happiness += 0.8 * dt;
+        recordInfluence(quiet, "neighbours", -2.5 * dt * damp, `${loud.name}'s lively table nearby`);
+        recordInfluence(loud, "company", 0.8 * dt, "the room's lively energy");
+        addLink(a, b, "annoy", `${quiet.name} is distracted by ${loud.name}'s table.`);
+      } else if (social.length === 2 || (a.type === "regular" && b.type === "regular")) {
+        a.happiness += 0.8 * dt; b.happiness += 0.8 * dt;
+        recordInfluence(a, "company", 0.8 * dt, "good company nearby");
+        recordInfluence(b, "company", 0.8 * dt, "good company nearby");
+        addLink(a, b, "buzz", `${a.name} and ${b.name} are hitting it off.`);
+      } else if (students.length === 2) {
+        a.happiness += 0.4 * dt; b.happiness += 0.4 * dt;
+        recordInfluence(a, "company", 0.4 * dt, "studying beside another student");
+        recordInfluence(b, "company", 0.4 * dt, "studying beside another student");
+        addLink(a, b, "buzz", `${a.name} and ${b.name} are studying side by side.`);
+      }
+    }
+  }
+}
+
 function updateCustomers(dt) {
   const inside = customers.filter(c =>
     !["leaving", "gone"].includes(c.state)
@@ -707,6 +805,8 @@ function updateCustomers(dt) {
     Math.max(0, inside.length - 3) -
     cafe.sound * 2
   );
+
+  applyNeighborEffects(inside, dt);
 
   customers.forEach(c => {
     c.waterFeedback = Math.max(0, (c.waterFeedback || 0) - dt);
@@ -732,6 +832,7 @@ function updateCustomers(dt) {
     else if (c.state === "waiting") {
       c.timer += dt;
       c.happiness -= 1.5 * dt;
+      recordInfluence(c, "waiting", -1.5 * dt, "the wait for coffee");
 
       if (c.timer >= c.patience) {
         c.happiness -= 20;
@@ -745,16 +846,18 @@ function updateCustomers(dt) {
       // Noise affects customers differently
       if (noise > traits.noiseTolerance) {
         c.happiness -= 4 * dt;
+        recordInfluence(c, "noise", -4 * dt, "the café's noise level");
 
         if (!c.complaintMade && c.timer > 2) {
           c.complaintMade = true;
           effects.noiseComplaints++;
-          addEvent(`A ${c.type} thinks the café is too noisy!`, true);
+          addEvent(`${c.name} thinks the café is too noisy.`, true);
         }
       }
 
       if (c.type === "student" && cafe.wifi > 0) {
         c.happiness += 0.4 * dt;
+        recordInfluence(c, "wifi", 0.4 * dt, "Wi-Fi for studying");
       }
 
       let stayTime = traits.stay;
@@ -954,14 +1057,52 @@ function updateSetupPreview() {
 
 function drawCustomerBody(c, context) {
   if (selectedCustomer === c.id) drawCircle(c.x, c.y, 23, "#ffffff", context);
+  if (["waiting", "drinking"].includes(c.state)) {
+    context.strokeStyle = c.happiness >= 60 ? "#7c8758" : c.happiness > 40 ? "#d6b274" : "#b66f51";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(c.x, c.y, 21, 0, Math.PI * 2);
+    context.stroke();
+  }
   drawCircle(c.x, c.y, 18, customerTypes[c.type].color, context);
   drawCircle(c.x - 5, c.y - 3, 2, "#49372e", context);
   drawCircle(c.x + 5, c.y - 3, 2, "#49372e", context);
 }
 
 function drawCustomers() {
+  const showAll = document.getElementById("showConnections").checked;
+  links.forEach(({ a, b, kind, startedAt }) => {
+    if (![a, b].every(c => ["waiting", "drinking"].includes(c.state))) return;
+    // Briefly show new interactions; selection or the detail toggle reveals more.
+    if (!showAll && selectedCustomer !== a.id && selectedCustomer !== b.id &&
+        startedAt - timeLeft > 2.5) return;
+    ctx.save();
+    ctx.strokeStyle = kind === "annoy" ? "#b66f51" : "#7c8758";
+    ctx.globalAlpha = 0.7;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = "14px Georgia";
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.textAlign = "center";
+    ctx.fillText(kind === "annoy" ? "!" : "+", (a.x + b.x) / 2, (a.y + b.y) / 2 + 6);
+    ctx.restore();
+  });
+
   customers.forEach(c => {
     ctx.textAlign = "center";
+
+    if (["waiting", "drinking"].includes(c.state) && (showAll || selectedCustomer === c.id)) {
+      ctx.fillStyle = "#fffaf0";
+      ctx.fillRect(c.x - 28, c.y + 32, 56, 16);
+      ctx.font = "11px sans-serif";
+      ctx.fillStyle = "#3d3025";
+      ctx.fillText(c.name, c.x, c.y + 40);
+    }
 
     if (c.state === "waiting") {
       drawCircle(c.x, c.y - 35, 17, "#fffaf3");
@@ -1038,7 +1179,25 @@ function gameLoop(now) {
   }
 }
 
+function updateIdentityBar() {
+  const room = { student: 0, social: 0, regular: 0 };
+  customers.forEach(c => {
+    if (!["leaving", "gone"].includes(c.state)) room[c.type]++;
+  });
+  for (const t of Object.keys(room)) {
+    const el = document.getElementById(`id-${t}`);
+    el.style.flexGrow = 0.4 + cafe.rep[t] + room[t];
+  }
+  const labels = { student: "Students", social: "Social visitors", regular: "Regulars" };
+  const description = Object.keys(room).map(type =>
+    `${labels[type]}: ${room[type]} inside, reputation ${cafe.rep[type].toFixed(1)} out of 6`
+  ).join(". ");
+  const track = document.getElementById("identityTrack");
+  if (track.getAttribute("aria-label") !== description) track.setAttribute("aria-label", description);
+}
+
 function updateLiveStats() {
+  updateIdentityBar();
   document.getElementById("time").textContent = Math.ceil(Math.max(0, timeLeft));
   document.getElementById("sales").textContent = sales;
   document.getElementById("served").textContent = outcomes.happy + outcomes.unhappy +
@@ -1144,6 +1303,11 @@ Free water offered: ${effects.waterGiven}`;
 Students: ${arrivals.student}
 Social customers: ${arrivals.social}
 Regulars: ${arrivals.regular}`;
+
+  document.getElementById("resultIdentity").textContent +=
+    `\n${reputationSummary()}.\nReputation (out of 6): students ${cafe.rep.student.toFixed(1)}, social visitors ${cafe.rep.social.toFixed(1)}, regulars ${cafe.rep.regular.toFixed(1)}.`;
+  document.getElementById("resultStory").textContent =
+    story.slice(-12).join("\n") || "A quiet day. Nothing out of the ordinary.";
 
   document.getElementById("resultMoney").textContent = cafe.budget;
 

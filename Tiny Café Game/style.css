@@ -151,6 +151,19 @@ summary:hover { color: var(--ink); }
 .receipt-details h2 { font-size: 20px; margin: 16px 0 8px; }
 .receipt-details p { white-space: pre-line; color: var(--muted); font-size: 13px; }
 .receipt > button { width: 100%; margin-top: 22px; }
+.identity-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; padding: 12px 0; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--line); }
+.identity-track { flex: 1 1 100px; display: flex; gap: 2px; height: 7px; border-radius: 4px; overflow: hidden; }
+.identity-track i { flex: 1 1 0; min-width: 0; transition: flex-grow .6s; }
+#id-student { background: #90a8bb; }
+#id-social { background: #d99c88; }
+#id-regular { background: #d6b274; }
+.identity-legend { display: flex; gap: 12px; }
+.identity-legend span::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; background: #90a8bb; }
+.identity-legend span:nth-child(2)::before { background: #d99c88; }
+.identity-legend span:nth-child(3)::before { background: #d6b274; }
+.connection-toggle { display: flex; align-items: center; gap: 8px; color: var(--ink); }
+.connection-toggle input { accent-color: var(--olive); }
+@media (prefers-reduced-motion: reduce) { .identity-track i { transition: none; } }
 @media (max-width: 1000px) {
   .screen { width: calc(100% - 40px); }
   .briefing-layout { gap: 30px; grid-template-columns: 1fr 1fr; }
