@@ -32,6 +32,15 @@ cafe.rep = Object.fromEntries(Object.keys(startingCafe.rep).map(type => {
     ? Math.max(0, Math.min(6, score)) : 0];
 }));
 
+// Regular memories survive new days and older save files.
+const regularNames = ["Ana", "Omar", "Iris"];
+cafe.memories = Object.fromEntries(regularNames.map(name => {
+  const old = cafe.memories?.[name];
+  return [name, { visits: Math.max(0, Number(old?.visits) || 0),
+    loyalty: Math.max(-3, Math.min(3, Number(old?.loyalty) || 0)),
+    last: ["happy", "unhappy", "unserved"].includes(old?.last) ? old.last : "new" }];
+}));
+
 function saveGame() {
   try {
     localStorage.setItem("cafeSave", JSON.stringify(cafe));
@@ -299,6 +308,17 @@ let sales = 0;
 let noise = 0;
 let selectedCustomer = null;
 
+const drinks = {
+  espresso: { name: "Espresso", seconds: 2.2, extra: 0 },
+  latte: { name: "Latte", seconds: 3.8, extra: 1 },
+  tea: { name: "Tea", seconds: 2.8, extra: 0 }
+};
+let staff = [];
+let orderQueue = [];
+let staffServed = 0;
+let playerServed = 0;
+let mistakes = 0;
+let managerViewTimer = 0;
 let currentOrder = null;
 let coffeeState = "idle";
 let brewTimer = 0;
@@ -331,7 +351,16 @@ async function startDay() {
   customers = [];
   dirtyTables = [];
 
-  timeLeft = 60;
+  timeLeft = 90;
+  orderQueue = [];
+  staffServed = 0;
+  playerServed = 0;
+  mistakes = 0;
+  managerViewTimer = 0;
+  staff = [
+    { name: "Max", trait: "Fast, sometimes sloppy", speed: 1.5, warmth: 0, error: 0.18, energy: 100, morale: 75, task: null, remaining: 0, rest: false },
+    { name: "Lina", trait: "Slow, warm service", speed: 0.85, warmth: 9, error: 0.02, energy: 100, morale: 85, task: null, remaining: 0, rest: false }
+  ];
   spawnTimer = 0;
   visitors = 0;
   sales = 0;
@@ -390,7 +419,7 @@ async function startDay() {
   updateOrderStatus();
   updateLiveStats();
   drawCafe();
-  addEvent("The doors are open. Click a customer’s coffee bubble to begin.");
+  addEvent("The doors are open. Staff handle orders automatically. Prioritize guests, support staff, or jump in.");
 
   lastFrame = performance.now();
   animationFrameId = requestAnimationFrame(gameLoop);
@@ -439,7 +468,11 @@ function createCustomer() {
   customers.filter(c => !["leaving", "gone"].includes(c.state))
     .forEach(c => choices.push(c.type));
 
-  const type = choices[Math.floor(Math.random() * choices.length)];
+  // Good memories increase regular visits; bad ones reduce their chance.
+  const loyalty = Object.values(cafe.memories).reduce((sum, m) => sum + m.loyalty, 0);
+  for (let i = 0; i < Math.max(0, loyalty); i++) choices.push("regular");
+  let type = choices[Math.floor(Math.random() * choices.length)];
+  if (type === "regular" && loyalty < 0 && Math.random() < 0.5) type = "social";
 
   visitors++;
   arrivals[type]++;
@@ -480,9 +513,15 @@ function createCustomer() {
   const seat = tablePositions[table];
 
   const id = customerNumber++;
+  const availableRegulars = regularNames.filter(name => !customers.some(c => c.name === name && c.state !== "gone"));
+  const regularName = type === "regular" && availableRegulars.length
+    ? availableRegulars[Math.floor(Math.random() * availableRegulars.length)] : null;
+  const drinkKeys = type === "student" ? ["tea", "latte"] : type === "social" ? ["latte", "espresso"] : ["espresso", "tea"];
   customers.push({
     id,
-    name: names[id % names.length],
+    name: regularName || ["Leo", "Mara", "Sam", "Theo", "Noor", "Jules", "Pia"][id % 7] + ` ${id + 1}`,
+    regularName,
+    drink: drinkKeys[Math.floor(Math.random() * drinkKeys.length)],
     type,
     table,
     x: entrance.x,
@@ -491,7 +530,7 @@ function createCustomer() {
     targetY: seat.y + seatOffset.y,
     state: "walking",
     timer: 0,
-    happiness: 75,
+    happiness: 75 + (regularName ? cafe.memories[regularName].loyalty * 3 : 0),
     patience: customerTypes[type].patience,
     outcomeRecorded: false,
     complaintMade: false,
@@ -500,7 +539,13 @@ function createCustomer() {
     influences: {}
   });
 
-  addEvent(`${customers[customers.length - 1].name}, a ${type}, found a table.`);
+  const guest = customers[customers.length - 1];
+  addEvent(`${guest.name}, a ${type}, found a table.`);
+  if (regularName && cafe.memories[regularName].visits) {
+    const memory = cafe.memories[regularName];
+    addEvent(`${regularName} remembers their last ${memory.last === "happy" ? "happy visit" : memory.last === "unserved" ? "visit without service" : "unhappy visit"}.`);
+    recordInfluence(guest, "memory", memory.loyalty * 3, "memories of earlier visits");
+  }
 }
 
 // --------------------
@@ -512,7 +557,7 @@ function updateOrderStatus() {
   const help = document.getElementById("serviceHelp");
 
   const messages = {
-    idle: ["Ready for the next order", "Click a customer’s coffee bubble to take their order."],
+    idle: ["Staff are handling the queue", "Select a guest to prioritize their order, offer water, or make their drink yourself."],
     ordered: ["Order received", "Click the coffee machine to brew."],
     brewing: ["Brewing...", "Your coffee is being prepared."],
     ready: ["Coffee ready!", "Click the machine to pick it up."],
@@ -532,6 +577,8 @@ function updateOrderStatus() {
 function takeOrder(customer) {
   if (coffeeState !== "idle" || customer.state !== "waiting") return;
 
+  if (staff.some(person => person.task === customer.id)) return;
+  orderQueue = orderQueue.filter(id => id !== customer.id);
   currentOrder = customer.id;
   coffeeState = "ordered";
   updateOrderStatus();
@@ -542,7 +589,8 @@ function takeOrder(customer) {
 function useCoffeeMachine() {
   if (coffeeState === "ordered") {
     coffeeState = "brewing";
-    brewTimer = 2.5;
+    const guest = customers.find(c => c.id === currentOrder);
+    brewTimer = drinks[guest.drink].seconds;
     addEvent("Coffee is brewing.");
   } else if (coffeeState === "ready") {
     coffeeState = "carrying";
@@ -557,23 +605,20 @@ function deliverCoffee(customer) {
   if (currentOrder !== customer.id) return;
   if (customer.state !== "waiting") return;
 
-  customer.state = "drinking";
-  customer.timer = 0;
-  const previousMood = customer.happiness;
-  customer.happiness = Math.min(100, customer.happiness + 15);
-  recordInfluence(customer, "service", customer.happiness - previousMood, "coffee being served");
-
-  sales += cafe.price;
+  serveDrink(customer);
+  playerServed++;
 
   currentOrder = null;
   coffeeState = "idle";
 
   updateOrderStatus();
-  addEvent(`Coffee for ${customer.name}. +$${cafe.price}`);
+  addEvent(`You delivered ${drinks[customer.drink].name.toLowerCase()} to ${customer.name}.`);
   updateCustomerControls();
 }
 
 function cancelOrder(id) {
+  orderQueue = orderQueue.filter(queued => queued !== id);
+  staff.forEach(person => { if (person.task === id) { person.task = null; person.remaining = 0; } });
   if (currentOrder !== id) return;
 
   currentOrder = null;
@@ -611,7 +656,7 @@ function updateCustomerControls() {
   }
 
   document.getElementById("selectedCustomer").textContent =
-    `${customer.name} · ${customer.type} · ${Math.round(customer.happiness)}% mood`;
+    `${customer.name} · ${drinks[customer.drink].name} · ${Math.round(customer.happiness)}% mood`;
   const waiting = customer.state === "waiting";
   const remaining = waiting ? Math.max(0, 1 - customer.timer / customer.patience) : 1;
   const meter = document.getElementById("selectedPatience");
@@ -702,6 +747,13 @@ function recordOutcome(customer, outcome) {
   customer.outcomeRecorded = true;
   outcomes[outcome]++;
   adjustRep(customer, outcome);
+  if (customer.regularName) {
+    const memory = cafe.memories[customer.regularName];
+    memory.visits++;
+    memory.last = outcome;
+    memory.loyalty = Math.max(-3, Math.min(3, memory.loyalty + (outcome === "happy" ? 1 : -1)));
+    story.push(`${customer.name} will remember this ${outcome} visit. Loyalty: ${memory.loyalty}.`);
+  }
 
   // Only customers who actually sat down contribute reviews
   satisfactionTotal += Math.max(0, Math.min(100, customer.happiness));
@@ -822,6 +874,8 @@ function updateCustomers(dt) {
         c.y = c.targetY;
         c.state = "waiting";
         c.timer = 0;
+        orderQueue.push(c.id);
+        addEvent(`${c.name} ordered ${drinks[c.drink].name.toLowerCase()}.`);
       } else {
         const step = Math.min(distance, 110 * dt);
         c.x += dx / distance * step;
@@ -938,8 +992,6 @@ canvas.addEventListener("click", event => {
 
       if (coffeeState === "carrying") {
         deliverCoffee(c);
-      } else {
-        takeOrder(c);
       }
       updateCustomerControls();
       return;
@@ -1107,7 +1159,7 @@ function drawCustomers() {
     if (c.state === "waiting") {
       drawCircle(c.x, c.y - 35, 17, "#fffaf3");
       ctx.font = "18px Georgia";
-      ctx.fillText(c.waterFeedback > 0 ? "💧" : "☕", c.x, c.y - 29);
+      ctx.fillText(c.waterFeedback > 0 ? "💧" : c.drink === "tea" ? "🍵" : "☕", c.x, c.y - 29);
 
       // Patience indicator
       const remaining = Math.max(0, 1 - c.timer / c.patience);
@@ -1167,6 +1219,7 @@ function gameLoop(now) {
   }
 
   updateCustomers(dt);
+  updateStaff(dt);
   drawCafe();
   drawCustomers();
 
@@ -1209,6 +1262,7 @@ function updateLiveStats() {
     ? Math.round(satisfactionTotal / completedVisits) : 0;
   document.querySelector(".time-stat").classList.toggle("is-urgent", timeLeft <= 10);
   updateCustomerControls();
+  updateManagerPanel();
 }
 
 function renderResultGoals(mission, satisfaction) {
@@ -1296,7 +1350,9 @@ Still inside at closing: ${unfinished}`;
 Price refusals: ${effects.priceRefusals}
 No available tables: ${effects.noSeats}
 Noise complaints: ${effects.noiseComplaints}
-Free water offered: ${effects.waterGiven}`;
+Free water offered: ${effects.waterGiven}
+Staff drinks: ${staffServed} · Your drinks: ${playerServed}
+Drinks remade: ${mistakes}`;
 
   document.getElementById("resultIdentity").textContent =
     `Your café became ${identity}.
@@ -1318,6 +1374,116 @@ Regulars: ${arrivals.regular}`;
 
 function nextDay() {
   showScreen("scenario");
+}
+
+// --------------------
+// STAFF AND SHARED ORDER QUEUE
+// --------------------
+
+function serveDrink(customer, person = null) {
+  customer.state = "drinking";
+  customer.timer = 0;
+  const before = customer.happiness;
+  customer.happiness = Math.min(100, before + 15 + (person?.warmth || 0));
+  recordInfluence(customer, "service", customer.happiness - before,
+    person?.warmth ? `${person.name}'s warm service` : "their drink arriving");
+  sales += cafe.price + drinks[customer.drink].extra;
+  if (person) {
+    staffServed++;
+    addEvent(`${person.name} served ${customer.name}'s ${drinks[customer.drink].name.toLowerCase()}${person.warmth ? " with a warm welcome" : ""}.`);
+  }
+}
+
+function updateStaff(dt) {
+  orderQueue = orderQueue.filter(id => customers.some(c => c.id === id && c.state === "waiting"));
+  for (const person of staff) {
+    if (person.rest) {
+      person.energy = Math.min(100, person.energy + 8 * dt);
+      person.morale = Math.min(100, person.morale + 3 * dt);
+      continue;
+    }
+    if (person.task !== null) {
+      const guest = customers.find(c => c.id === person.task && c.state === "waiting");
+      if (!guest) { person.task = null; continue; }
+      person.energy = Math.max(0, person.energy - 2 * dt);
+      person.morale = Math.max(0, person.morale - (orderQueue.length > 1 ? 0.9 : 0.15) * dt);
+      person.remaining -= dt * person.speed * (0.5 + person.energy / 200) * (0.75 + person.morale / 400);
+      if (person.remaining > 0) continue;
+      const risk = person.error + (person.energy < 30 ? 0.15 : 0) + (person.morale < 30 ? 0.1 : 0);
+      if (!guest.remade && Math.random() < risk) {
+        guest.remade = true;
+        guest.happiness = Math.max(0, guest.happiness - 10);
+        recordInfluence(guest, "mistake", -10, `${person.name}'s drink needing a remake`);
+        person.remaining = drinks[guest.drink].seconds * 0.7;
+        mistakes++;
+        const message = `${person.name} remakes ${guest.name}'s drink${person.energy < 30 ? " while exhausted" : " after a mistake"}. The extra wait hurts their mood.`;
+        story.push(message);
+        addEvent(message, true);
+      } else {
+        serveDrink(guest, person);
+        person.task = null;
+      }
+    }
+    if (person.task === null && orderQueue.length) {
+      person.task = orderQueue.shift();
+      const guest = customers.find(c => c.id === person.task);
+      person.remaining = drinks[guest.drink].seconds;
+    } else if (person.task === null) {
+      person.energy = Math.min(100, person.energy + dt);
+    }
+  }
+  managerViewTimer -= dt;
+}
+
+function toggleBreak(index) {
+  if (!running || !staff[index]) return;
+  const person = staff[index];
+  if (!person.rest && person.task !== null) {
+    orderQueue.unshift(person.task);
+    person.task = null;
+  }
+  person.rest = !person.rest;
+  addEvent(`${person.name} ${person.rest ? "takes a break; the other barista carries the queue" : "returns to the counter"}.`);
+  managerViewTimer = 0;
+  updateManagerPanel();
+}
+
+function prioritizeGuest() {
+  if (!running) return;
+  const index = orderQueue.indexOf(selectedCustomer);
+  if (index < 0) return;
+  orderQueue.unshift(...orderQueue.splice(index, 1));
+  addEvent(`${customers.find(c => c.id === selectedCustomer).name}'s order moved to the front.`);
+  managerViewTimer = 0;
+}
+
+function helpWithDrink() {
+  if (!running) return;
+  const guest = customers.find(c => c.id === selectedCustomer);
+  if (guest) takeOrder(guest);
+  managerViewTimer = 0;
+}
+
+function updateManagerPanel() {
+  const guest = customers.find(c => c.id === selectedCustomer && c.state === "waiting");
+  document.getElementById("priorityButton").disabled = !guest || !orderQueue.includes(guest.id);
+  document.getElementById("helpButton").disabled = !guest || coffeeState !== "idle" || staff.some(p => p.task === guest.id);
+  if (managerViewTimer > 0) return;
+  managerViewTimer = 0.25;
+  const staffCards = document.getElementById("staffCards");
+  if (staffCards.contains(document.activeElement)) return;
+  staffCards.innerHTML = staff.map((person, i) => {
+    const task = customers.find(c => c.id === person.task);
+    return `<article class="staff-card"><div><strong>${person.name}</strong><small>${person.trait}</small></div>
+      <p>${person.rest ? "On break" : task ? `${drinks[task.drink].name} → ${task.name}` : "Ready for orders"}</p>
+      <label>Energy ${Math.round(person.energy)}%<progress max="100" value="${person.energy}"></progress></label>
+      <label>Morale ${Math.round(person.morale)}%<progress max="100" value="${person.morale}"></progress></label>
+      <button onclick="toggleBreak(${i})">${person.rest ? "Return to work" : "Give a break"}</button></article>`;
+  }).join("");
+  document.getElementById("orderQueue").textContent = orderQueue.map(id => {
+    const c = customers.find(c => c.id === id);
+    return `${c.name}: ${drinks[c.drink].name}`;
+  }).join(" → ") || "No orders waiting.";
 }
 
 // Begin with today's mission before preparing the café.
