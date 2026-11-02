@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,267 +7,133 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
- 
-<!-- SCENARIO SCREEN -->
-<section id="scenario" class="screen active">
-  <h1>Today's Mission ☕</h1>
-
-  <div class="card">
-    <p>Day <span id="missionDay">1</span></p>
-
-    <h2 id="missionTitle"></h2>
-    <p id="missionDescription"></p>
-
-    <h3>Your Goals</h3>
-    <p id="missionGoals"></p>
-
-    <h3>Things to Consider</h3>
-    <p id="missionHint"></p>
-  </div>
-
-  <button onclick="showScreen('setup')">
-    Prepare Your Café →
-  </button>
-</section>
-
-<!-- SETUP SCREEN -->
-<section id="setup" class="screen">
-
-  <div class="setup-layout">
-
-    <!-- HEADER -->
-    <header class="setup-header">
-      <div class="setup-heading">
-        <p class="eyebrow">
-          BEFORE OPENING · DAY <span id="setupDay">1</span>
-        </p>
-
-        <h1>Prepare Your Café</h1>
-        <p id="setupMission">Make decisions that shape the day.</p>
-      </div>
-
-      <div class="setup-budget">
-        <small>AVAILABLE MONEY</small>
-        <strong>$<span id="budget">150</span></strong>
-      </div>
+  <section id="scenario" class="screen active" aria-labelledby="missionTitle">
+    <header class="page-header">
+      <span class="wordmark">Little Café<span class="wordmark-dot">.</span></span>
+      <span class="step-label">01 / A new day</span>
     </header>
+    <main class="briefing-layout">
+      <div class="welcome-art">
+        <img src="assets/scene.png" alt="A warm wooden café with an olive green counter and leafy plants.">
+        <span class="art-caption">A little space. A café of your own.</span>
+      </div>
+      <div class="briefing-paper">
+        <p class="eyebrow">Your daily brief · Day <span id="missionDay">1</span></p>
+        <h1 id="missionTitle">A new day at the café</h1>
+        <p id="missionDescription" class="intro"></p>
+        <ul id="missionGoals" class="mission-goals" aria-label="Today's goals"></ul>
+        <p class="hint"><span>A little advice</span><span id="missionHint"></span></p>
+        <button class="primary" onclick="showScreen('setup')">Prepare your café <span aria-hidden="true">→</span></button>
+      </div>
+    </main>
+    <p class="page-note">Set the atmosphere. Serve with care. See what grows.</p>
+  </section>
 
-    <div class="setup-body">
-
-      <!-- LEFT: CAFÉ PREVIEW -->
+  <section id="setup" class="screen" aria-labelledby="setupTitle">
+    <header class="page-header">
+      <span class="wordmark">Little Café<span class="wordmark-dot">.</span></span>
+      <span class="step-label">02 / Before opening · Day <span id="setupDay">1</span></span>
+    </header>
+    <div class="setup-heading">
+      <div><p class="eyebrow" id="setupMission"></p><h1 id="setupTitle">Make it yours.</h1></div>
+      <div class="budget-total"><span>Available to spend</span><strong>$<span id="budget">150</span></strong></div>
+    </div>
+    <main class="setup-body">
       <div class="setup-preview">
-
-        <div class="preview-heading">
-          <h2>☕ Your Café</h2>
-          <span>Live preview</span>
-        </div>
-
-        <canvas id="setupCanvas" width="1000" height="542"></canvas>
-
+        <canvas id="setupCanvas" width="1000" height="542" aria-label="Live preview of your café and its furniture"></canvas>
         <div class="preview-legend">
-          <span>🪑 <b id="previewTables">3</b> tables</span>
-          <span>📶 Level <b id="previewWifi">0</b></span>
-          <span>🔇 Level <b id="previewSound">0</b></span>
+          <span><b id="previewTables">3</b> tables</span>
+          <span>Wi-Fi <b id="previewWifi">0</b>/3</span>
+          <span>Sound panels <b id="previewSound">0</b>/3</span>
         </div>
-
-        <div class="prediction-box">
-          <h3 id="identity">Your choices will shape the café.</h3>
-          <p id="prediction">A small neighborhood café.</p>
-        </div>
-
+        <div class="prediction-box"><h2 id="identity">Your café's atmosphere</h2><p id="prediction"></p></div>
       </div>
-
-      <!-- RIGHT: SHOP AND SETTINGS -->
-      <aside class="setup-sidebar">
-
-        <div class="setup-scroll">
-
-          <h2>Shop & Upgrades</h2>
-          <p class="shop-intro">
-            Upgrades stay with your café between days.
-          </p>
-
-          <div class="shop">
-
-            <div class="item">
-              <div class="item-details">
-                <h3>🪑 Extra Table</h3>
-                <p>More space, more potential noise.</p>
-                <small>Owned: <span id="tables">3</span>/6</small>
-              </div>
-              <button onclick="buyUpgrade('tables', 40)">
-                $40
-              </button>
-            </div>
-
-            <div class="item">
-              <div class="item-details">
-                <h3>📶 Better Wi-Fi</h3>
-                <p>Attracts students who stay longer.</p>
-                <small>Level: <span id="wifi">0</span>/3</small>
-              </div>
-              <button onclick="buyUpgrade('wifi', 50)">
-                $50
-              </button>
-            </div>
-
-            <div class="item">
-              <div class="item-details">
-                <h3>🔇 Sound Panels</h3>
-                <p>Make the café quieter.</p>
-                <small>Level: <span id="sound">0</span>/3</small>
-              </div>
-              <button onclick="buyUpgrade('sound', 45)">
-                $45
-              </button>
-            </div>
-
-
-
+      <aside class="setup-sidebar" aria-label="Shop and café settings">
+        <div class="section-heading"><h2>A few improvements</h2><small>Yours to keep</small></div>
+        <div class="shop">
+          <div class="item">
+            <div><h3>Extra table</h3><p>More seats, a busier room.</p><small><span id="tables">3</span> of 6 tables</small></div>
+            <button data-upgrade="tables" data-cost="40" onclick="buyUpgrade('tables', 40)" aria-label="Buy an extra table for 40 dollars">$40</button>
           </div>
-
-          <!-- CAFÉ SETTINGS -->
-          <div class="setup-settings">
-            <h2>Café Settings</h2>
-
-            <label for="price">
-              Coffee price
-              <strong>$<span id="priceValue">5</span></strong>
-            </label>
-
-            <input type="range" id="price"
-                   min="3" max="8" value="5">
-
-            <label for="music">
-              Music volume
-              <strong><span id="musicValue">3</span>/10</strong>
-            </label>
-
-            <input type="range" id="music"
-                   min="0" max="10" value="3">
+          <div class="item">
+            <div><h3>Better Wi-Fi</h3><p>For students settling in.</p><small>Level <span id="wifi">0</span> of 3</small></div>
+            <button data-upgrade="wifi" data-cost="50" onclick="buyUpgrade('wifi', 50)" aria-label="Upgrade Wi-Fi for 50 dollars">$50</button>
           </div>
-
+          <div class="item">
+            <div><h3>Sound panels</h3><p>A softer, quieter atmosphere.</p><small>Level <span id="sound">0</span> of 3</small></div>
+            <button data-upgrade="sound" data-cost="45" onclick="buyUpgrade('sound', 45)" aria-label="Buy sound panels for 45 dollars">$45</button>
+          </div>
         </div>
-
-        <!-- BOTTOM ACTIONS -->
+        <div class="setup-settings">
+          <h2>The finishing touches</h2>
+          <label for="price">Coffee price <strong>$<span id="priceValue">5</span></strong></label>
+          <input type="range" id="price" min="3" max="8" value="5">
+          <label for="music">Music volume <strong><span id="musicValue">3</span>/10</strong></label>
+          <input type="range" id="music" min="0" max="10" value="3">
+        </div>
         <footer class="setup-actions">
-          <p id="message">What will you improve today?</p>
-          <button onclick="startDay()">Open Café →</button>
+          <p id="message" role="status">What will you improve today?</p>
+          <button class="primary" onclick="startDay()">Open the doors <span aria-hidden="true">→</span></button>
         </footer>
-
       </aside>
+    </main>
+  </section>
 
+  <section id="play" class="screen" aria-label="Café gameplay">
+    <div class="game-layout">
+      <header class="game-header">
+        <div class="game-heading"><span class="wordmark">Little Café<span class="wordmark-dot">.</span></span><p id="activeMission"></p></div>
+        <div class="game-stats" aria-label="Today's progress">
+          <div class="time-stat"><span>Time left</span><strong><span id="time">60</span><small>s</small></strong></div>
+          <div><span>Earnings</span><strong>$<span id="sales">0</span><small> / $<span id="salesGoal">20</span></small></strong></div>
+          <div><span>Happy visits</span><strong><span id="happy">0</span><small> / <span id="happyGoal">3</span></small></strong></div>
+        </div>
+      </header>
+      <main class="cafe-area">
+        <canvas id="cafeCanvas" width="1000" height="542" aria-label="Click a seated customer to order, the counter's coffee machine to brew, and dirty tables to clean them"></canvas>
+      </main>
+      <div class="service-dock">
+        <div class="service-instruction"><strong id="orderStatus">Ready to welcome customers</strong><p id="serviceHelp">Click a customer's coffee bubble to take an order.</p></div>
+        <div id="customerControls" class="customer-controls" hidden>
+          <div><span id="selectedCustomer">None</span><label for="selectedPatience" id="patienceLabel">Patience</label><progress id="selectedPatience" max="100" value="100">100%</progress></div>
+          <button id="waterButton" onclick="offerWater()" title="Refills patience once per waiting customer for $2">Give water · $2</button>
+          <span id="waterStatus" class="water-status" role="status"></span>
+        </div>
+      </div>
+      <footer class="game-footer">
+        <p id="gameMessage" role="status">The doors are open.</p>
+        <div class="music-control"><label for="liveMusic">Music</label><input type="range" id="liveMusic" min="0" max="10" value="3"><output id="liveMusicValue" for="liveMusic">3</output></div>
+        <button class="text-button" onclick="endDay()">Close early</button>
+      </footer>
+      <div class="game-drawers">
+        <details id="dayDetails"><summary>Day details</summary><div class="detail-stats">
+          <div><span>Orders served</span><strong id="served">0</strong></div>
+          <div><span>Turned away</span><strong id="turnedAway">0</strong></div>
+          <div><span>Noise level</span><strong id="noise">0</strong></div>
+          <div><span>Visit satisfaction</span><strong><span id="liveSatisfaction">0</span>% <small>/ <span id="satisfactionGoal">70</span>%</small></strong></div>
+        </div><p class="muted">Happy visits and satisfaction count when customers finish their visit. Water costs are included in earnings.</p></details>
+        <details id="eventHistory"><summary>Event history</summary><div id="eventLog"></div></details>
+        <details><summary>How to play</summary><p>Click a customer's coffee bubble, then the machine on the counter to brew. Click the machine again when ready, then deliver to that customer. Click a dirty table to clean it. Select a waiting customer and give water to refill patience once for $2.</p></details>
+      </div>
     </div>
-  </div>
+  </section>
 
-</section>
-
-
-<!-- GAMEPLAY SCREEN -->
-<section id="play" class="screen">
-
-  <div class="game-layout">
-
-    <!-- TOP BAR -->
-    <header class="game-header">
-      <div>
-        <h2>☕ One Little Coffee Shop</h2>
-        <p id="activeMission"></p>
-      </div>
-
-      <div class="game-stats">
-        <div>⏱ <span id="time">60</span>s</div>
-        <div>💰 $<span id="sales">0</span></div>
-        <div>☕ <span id="served">0</span></div>
-        <div>♥ <span id="happy">0</span></div>
-        <div>🚪 <span id="turnedAway">0</span></div>
-        <div>🔊 <span id="noise">0</span></div>
-      </div>
-    </header>
-
-    <!-- MAIN GAME AREA -->
-    <div class="game-body">
-
-      <div class="cafe-area">
-        <canvas id="cafeCanvas"
-                width="1000" height="542"></canvas>
-
-        <div class="cafe-footer">
-          <p>Click customers, coffee machine, or dirty tables.</p>
-          <button onclick="endDay()">End Day</button>
-        </div>
-      </div>
-
-      <!-- SIDEBAR -->
-      <aside class="game-sidebar">
-
-        <div class="sidebar-section">
-          <h3>☕ Coffee Station</h3>
-          <p id="orderStatus">No order selected</p>
-          <small id="serviceHelp">
-            Click a customer to take an order.
-          </small>
-        </div>
-
-        <div class="sidebar-section">
-          <h3>👤 Selected Customer</h3>
-          <p id="selectedCustomer">None</p>
-
-          <button onclick="offerWater()">
-            💧 Give Water −$2
-          </button>
-        </div>
-
-        <div class="sidebar-section">
-          <h3>🎵 Music</h3>
-
-          <div class="music-control">
-            <input type="range" id="liveMusic"
-                   min="0" max="10" value="3">
-            <span id="liveMusicValue">3</span>
-          </div>
-        </div>
-
-        <div class="sidebar-section events-section">
-          <h3>💬 Café Events</h3>
-          <p id="gameMessage">Opening the café...</p>
-          <div id="eventLog"></div>
-        </div>
-
-      </aside>
-    </div>
-
-  </div>
-</section>
-
-
-
-<!-- RESULTS SCREEN -->
-<section id="results" class="screen">
-  <h1>End of Day Report</h1>
-
-  <div class="card">
-    <h2 id="resultTitle"></h2>
-    <p id="resultMessage"></p>
-
-    <h3>Customer Outcomes</h3>
-    <p id="resultCustomers"></p>
-
-    <h3>Your Decisions & Their Effects</h3>
-    <p id="resultEffects"></p>
-
-    <h3>What Emerged?</h3>
-    <p id="resultIdentity"></p>
-
-    <h3>Money Available</h3>
-    <p>$<span id="resultMoney"></span></p>
-  </div>
-
-  <button onclick="nextDay()">Continue →</button>
-</section>
-
-
+  <section id="results" class="screen" aria-labelledby="resultTitle">
+    <header class="page-header"><span class="wordmark">Little Café<span class="wordmark-dot">.</span></span><span class="step-label">04 / After closing</span></header>
+    <main class="receipt">
+      <p class="eyebrow">Little Café · Daily receipt</p>
+      <h1 id="resultTitle">Day complete</h1>
+      <p id="resultMessage" class="muted"></p>
+      <div id="resultGoals" class="result-goals"></div>
+      <div class="receipt-total"><span>Money for your next day</span><strong>$<span id="resultMoney">0</span></strong></div>
+      <details class="receipt-details"><summary>A closer look at your day</summary>
+        <h2>Customer visits</h2><p id="resultCustomers"></p>
+        <h2>Your choices & their effects</h2><p id="resultEffects"></p>
+        <h2>Your café's character</h2><p id="resultIdentity"></p>
+      </details>
+      <button class="primary" onclick="nextDay()">A new day <span aria-hidden="true">→</span></button>
+    </main>
+  </section>
   <script src="script.js"></script>
 </body>
 </html>
