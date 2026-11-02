@@ -10,7 +10,6 @@ const startingCafe = {
   tables: 3,
   wifi: 0,
   sound: 0,
-  plants: 0,
   price: 5,
   music: 3
 };
@@ -105,6 +104,8 @@ function showScreen(name) {
 }
 
 function buyUpgrade(item, cost) {
+  if (!["tables", "wifi", "sound"].includes(item)) return;
+
   if (cafe.budget < cost) {
     document.getElementById("message").textContent = "Not enough money!";
     return;
@@ -135,7 +136,7 @@ function buyUpgrade(item, cost) {
 function updateSetup() {
   document.getElementById("budget").textContent = cafe.budget;
 
-  ["tables", "wifi", "sound", "plants"].forEach(item => {
+  ["tables", "wifi", "sound"].forEach(item => {
     document.getElementById(item).textContent = cafe[item];
   });
 
@@ -145,6 +146,7 @@ function updateSetup() {
   document.getElementById("musicValue").textContent = cafe.music;
 
   updateIdentity();
+  updateSetupPreview();
 }
 
 document.getElementById("price").oninput = function() {
@@ -170,9 +172,6 @@ function updateIdentity() {
 
   if (cafe.sound > 0)
     effects.push("Sound panels reduce noise.");
-
-  if (cafe.plants > 0)
-    effects.push("Plants improve comfort.");
 
   if (cafe.music >= 7)
     effects.push("Loud music attracts social customers.");
@@ -212,14 +211,50 @@ const customerTypes = {
   }
 };
 
+// All scene positions use the room's original proportions, independent of screen DPI.
+const sceneSize = { width: 1000, height: 542 };
 const tablePositions = [
-  { x: 270, y: 120 },
-  { x: 510, y: 120 },
-  { x: 270, y: 320 },
-  { x: 510, y: 320 },
-  { x: 390, y: 220 },
-  { x: 650, y: 220 }
+  { x: 215, y: 270 },
+  { x: 450, y: 405 },
+  { x: 685, y: 405 },
+  { x: 215, y: 405 },
+  { x: 685, y: 270 },
+  { x: 450, y: 270 }
 ];
+
+const entrance = { x: 820, y: 238 };
+// Use the machine already painted into the room; overlaying another duplicates it.
+const coffeeMachineArea = { x: 475, y: 67, width: 98, height: 57 };
+const seatOffset = { x: -16, y: -25 };
+
+function tableArtwork(index) {
+  // These drawings depict different shapes. Matching their leg height gives
+  // both styles the same floor line without stretching either illustration.
+  return index % 2
+    ? { name: "smallTable", width: 105 }
+    : { name: "table", width: 180 };
+}
+
+// Measured alpha bounds, with a pixel of padding to retain the outline.
+const sceneAssets = {
+  room: { file: "scene.png", crop: [18, 159, 1416, 767] },
+  table: { file: "table.png", crop: [179, 477, 904, 481] },
+  smallTable: { file: "smallTable.png", crop: [313, 399, 665, 613] },
+  chair: { file: "chair.png", crop: [284, 119, 661, 1051] }
+};
+
+const failedAssets = [];
+const assetsReady = Promise.all(Object.values(sceneAssets).map(asset =>
+  new Promise(resolve => {
+    asset.image = new Image();
+    asset.image.onload = resolve;
+    asset.image.onerror = () => {
+      failedAssets.push(asset.file);
+      resolve();
+    };
+    asset.image.src = `assets/${asset.file}`;
+  })
+));
 
 // --------------------
 // GAME VARIABLES
@@ -232,6 +267,7 @@ let customers = [];
 let dirtyTables = [];
 
 let running = false;
+let startingDay = false;
 let timeLeft = 60;
 let spawnTimer = 0;
 let lastFrame = 0;
@@ -258,8 +294,18 @@ let completedVisits;
 // START THE DAY
 // --------------------
 
-function startDay() {
-  if (running) return;
+async function startDay() {
+  if (running || startingDay) return;
+  startingDay = true;
+  document.getElementById("message").textContent = "Preparing the café artwork…";
+  await assetsReady;
+  startingDay = false;
+  if (failedAssets.length > 0) {
+    document.getElementById("message").textContent =
+      `Could not load: ${failedAssets.join(", ")}. Reload the page to try again.`;
+    return;
+  }
+  document.getElementById("message").textContent = "What will you improve today?";
   if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
 
   customers = [];
@@ -401,10 +447,10 @@ function createCustomer() {
     id: customerNumber++,
     type,
     table,
-    x: 70,
-    y: 450,
-    targetX: seat.x,
-    targetY: seat.y + 48,
+    x: entrance.x,
+    y: entrance.y,
+    targetX: seat.x + seatOffset.x,
+    targetY: seat.y + seatOffset.y,
     state: "walking",
     timer: 0,
     happiness: 75,
@@ -653,10 +699,6 @@ function updateCustomers(dt) {
         }
       }
 
-      if (cafe.plants > 0) {
-        c.happiness += 0.5 * dt;
-      }
-
       if (c.type === "student" && cafe.wifi > 0) {
         c.happiness += 0.4 * dt;
       }
@@ -673,8 +715,8 @@ function updateCustomers(dt) {
     }
 
     else if (c.state === "leaving") {
-      const dx = 70 - c.x;
-      const dy = 450 - c.y;
+      const dx = entrance.x - c.x;
+      const dy = entrance.y - c.y;
       const distance = Math.hypot(dx, dy);
 
       if (distance < 5) {
@@ -705,21 +747,24 @@ canvas.addEventListener("click", event => {
   const scaleX = rect.width / canvas.offsetWidth;
   const scaleY = rect.height / canvas.offsetHeight;
   const drawingScale = Math.min(
-    canvas.clientWidth / canvas.width,
-    canvas.clientHeight / canvas.height
+    canvas.clientWidth / sceneSize.width,
+    canvas.clientHeight / sceneSize.height
   );
   if (drawingScale <= 0) return;
 
-  const offsetX = (canvas.clientWidth - canvas.width * drawingScale) / 2;
-  const offsetY = (canvas.clientHeight - canvas.height * drawingScale) / 2;
+  const offsetX = (canvas.clientWidth - sceneSize.width * drawingScale) / 2;
+  const offsetY = (canvas.clientHeight - sceneSize.height * drawingScale) / 2;
   const x = ((event.clientX - rect.left) / scaleX -
     canvas.clientLeft - offsetX) / drawingScale;
   const y = ((event.clientY - rect.top) / scaleY -
     canvas.clientTop - offsetY) / drawingScale;
 
-  if (x < 0 || x > canvas.width || y < 0 || y > canvas.height) return;
+  if (x < 0 || x > sceneSize.width || y < 0 || y > sceneSize.height) return;
 
-  if (x >= 25 && x <= 185 && y >= 30 && y <= 115) {
+  if (x >= coffeeMachineArea.x &&
+      x <= coffeeMachineArea.x + coffeeMachineArea.width &&
+      y >= coffeeMachineArea.y &&
+      y <= coffeeMachineArea.y + coffeeMachineArea.height) {
     useCoffeeMachine();
     return;
   }
@@ -749,8 +794,9 @@ canvas.addEventListener("click", event => {
 
   for (let i = 0; i < cafe.tables; i++) {
     const table = tablePositions[i];
+    const artwork = tableArtwork(i);
 
-    if (Math.hypot(table.x - x, table.y - y) < 38) {
+    if (Math.abs(table.x - x) < artwork.width / 2 && y > table.y - 14 && y < table.y + 20) {
       if (dirtyTables.includes(i)) {
         dirtyTables = dirtyTables.filter(t => t !== i);
         addEvent("Table cleaned! It's available again.");
@@ -764,71 +810,106 @@ canvas.addEventListener("click", event => {
 // DRAWING
 // --------------------
 
-function drawCircle(x, y, r, color) {
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fill();
+function drawCircle(x, y, r, color, context = ctx) {
+  context.fillStyle = color;
+  context.beginPath();
+  context.arc(x, y, r, 0, Math.PI * 2);
+  context.fill();
 }
 
-function drawCafe() {
-  ctx.clearRect(0, 0, 800, 500);
+function prepareSceneCanvas(target) {
+  const ratio = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+  const width = Math.round(sceneSize.width * ratio);
+  const height = Math.round(sceneSize.height * ratio);
+  if (target.width !== width || target.height !== height) {
+    target.width = width;
+    target.height = height;
+  }
+  const context = target.getContext("2d");
+  context.setTransform(width / sceneSize.width, 0, 0, height / sceneSize.height, 0, 0);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  return context;
+}
 
-  ctx.fillStyle = "#ead9bf";
-  ctx.fillRect(0, 0, 800, 500);
+// Width determines height so none of the source artwork gets stretched.
+function drawAsset(name, x, y, width, context) {
+  const asset = sceneAssets[name];
+  const height = width * asset.crop[3] / asset.crop[2];
+  context.drawImage(asset.image, ...asset.crop, x, y, width, height);
+}
 
-  // Coffee station
-  ctx.fillStyle = "#a67454";
-  ctx.fillRect(25, 30, 160, 85);
+function drawCafe(target = canvas, preview = false) {
+  const context = prepareSceneCanvas(target);
+  context.clearRect(0, 0, sceneSize.width, sceneSize.height);
+  drawAsset("room", 0, 0, sceneSize.width, context);
 
-  ctx.fillStyle = "white";
-  ctx.textAlign = "center";
-  ctx.font = "17px Georgia";
-  ctx.fillText("☕ MACHINE", 105, 65);
-  ctx.font = "13px Georgia";
-  ctx.fillText("Click here", 105, 90);
-
-  // Tables
-  for (let i = 0; i < cafe.tables; i++) {
-    const table = tablePositions[i];
-
-    drawCircle(table.x, table.y, 35, "#ad7956");
-    drawCircle(table.x, table.y, 27, "#c7956b");
-
-    if (dirtyTables.includes(i)) {
-      ctx.font = "23px Georgia";
-      ctx.fillText("🧽", table.x, table.y + 7);
+  // Draw back to front. Seated heads sit between the chair and the tabletop.
+  const layers = tablePositions.slice(0, cafe.tables).map((table, index) => ({
+    y: table.y + 35, table, index
+  }));
+  if (!preview) {
+    customers.filter(c => ["walking", "leaving"].includes(c.state))
+      .forEach(customer => layers.push({ y: customer.y + 18, customer }));
+  }
+  layers.sort((a, b) => a.y - b.y);
+  for (const layer of layers) {
+    if (layer.customer) {
+      drawCustomerBody(layer.customer, context);
+      continue;
+    }
+    const { table, index } = layer;
+    drawAsset("chair", table.x - 53.5, table.y - 38, 75, context);
+    if (!preview) {
+      customers.filter(c => c.table === index && ["waiting", "drinking"].includes(c.state))
+        .forEach(c => drawCustomerBody(c, context));
+    }
+    const artwork = tableArtwork(index);
+    drawAsset(artwork.name, table.x - artwork.width / 2, table.y - 12, artwork.width, context);
+    if (!preview && dirtyTables.includes(index)) {
+      drawCircle(table.x, table.y, 14, "#fffaf3", context);
+      context.textAlign = "center";
+      context.font = "20px Georgia";
+      context.fillText("🧽", table.x, table.y + 6);
     }
   }
 
-  // Plants
-  for (let i = 0; i < cafe.plants; i++) {
-    const x = 65 + (i % 5) * 45;
-    const y = 185 + Math.floor(i / 5) * 45;
-
-    drawCircle(x, y, 15, "#819879");
+  if (!preview && coffeeState !== "idle") {
+    const machine = coffeeMachineArea;
+    context.strokeStyle = coffeeState === "ready" ? "#f4d183" : "#fffaf3";
+    context.lineWidth = 2;
+    context.strokeRect(machine.x - 3, machine.y - 3, machine.width + 6, machine.height + 6);
   }
+}
 
-  ctx.fillStyle = "#654b3b";
-  ctx.font = "18px Georgia";
-  ctx.textAlign = "left";
-  ctx.fillText("ENTRANCE ↑", 25, 475);
+let artworkLoaded = false;
+assetsReady.then(() => {
+  artworkLoaded = failedAssets.length === 0;
+  updateSetupPreview();
+});
+
+function updateSetupPreview() {
+  const preview = document.getElementById("setupCanvas");
+  if (preview && artworkLoaded) drawCafe(preview, true);
+  for (const key of ["tables", "wifi", "sound"]) {
+    const label = document.getElementById(`preview${key[0].toUpperCase()}${key.slice(1)}`);
+    if (label) label.textContent = cafe[key];
+  }
+  const day = document.getElementById("setupDay");
+  const mission = document.getElementById("setupMission");
+  if (day) day.textContent = cafe.day;
+  if (mission) mission.textContent = getMission().title;
+}
+
+function drawCustomerBody(c, context) {
+  if (selectedCustomer === c.id) drawCircle(c.x, c.y, 23, "#ffffff", context);
+  drawCircle(c.x, c.y, 18, customerTypes[c.type].color, context);
+  drawCircle(c.x - 5, c.y - 3, 2, "#49372e", context);
+  drawCircle(c.x + 5, c.y - 3, 2, "#49372e", context);
 }
 
 function drawCustomers() {
   customers.forEach(c => {
-    const traits = customerTypes[c.type];
-
-    // Selected customer
-    if (selectedCustomer === c.id) {
-      drawCircle(c.x, c.y, 23, "#ffffff");
-    }
-
-    drawCircle(c.x, c.y, 18, traits.color);
-
-    drawCircle(c.x - 5, c.y - 3, 2, "#49372e");
-    drawCircle(c.x + 5, c.y - 3, 2, "#49372e");
-
     ctx.textAlign = "center";
 
     if (c.state === "waiting") {
