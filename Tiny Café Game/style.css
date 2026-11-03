@@ -2512,3 +2512,75 @@ select {
     padding: 12px;
   }
 }
+
+/* Counter sections keep each action panel short. */
+.counter-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  width: 100%;
+  padding: 4px;
+  border-radius: 9px;
+  background: var(--olive-light);
+}
+
+.counter-tabs button {
+  min-width: 0;
+  min-height: 38px;
+  padding: 6px 3px;
+  border: 0;
+  background: transparent;
+  font-size: 11px;
+}
+
+.counter-tabs button[aria-pressed="true"] {
+  background: var(--cream);
+  color: var(--olive);
+  box-shadow: 0 2px 5px #3d302512;
+}
+
+.counter-tab-content {
+  width: 100%;
+  min-width: 0;
+}
+
+.counter-tab-content .drink-row + .drink-row {
+  margin-top: 8px;
+}
+
+.counter-tab-content .counter-special {
+  margin: 0;
+  border: 0;
+}
+
+.counter-note,
+.tray-contents p {
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.counter-load,
+.counter-fault {
+  width: 100%;
+}
+
+.counter-fault {
+  color: var(--rust);
+  border-color: var(--rust);
+}
+
+/* One quiet status key replaces the two instruction rows. */
+.compact-legend {
+  align-items: center;
+  gap: 6px 16px;
+  padding: 10px 0 8px;
+}
+
+.compact-legend > span {
+  white-space: nowrap;
+}
+
+.scene-panel-heading .service-instruction p:empty {
+  display: none;
+}

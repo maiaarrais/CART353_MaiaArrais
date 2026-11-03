@@ -328,6 +328,8 @@ let dirtyTables = [];
 
 let focus = { kind: "none", id: null };
 let previewTable = null;
+let counterTab = "supplies";
+let hoveredTable = null;
 let guestDrag = null;
 let suppressCanvasClick = false;
 let floatingNotes = [];
@@ -395,6 +397,8 @@ async function startDay() {
   dirtyTables = [];
   waitingParties = [];
   focus = { kind: "none", id: null };
+  counterTab = "supplies";
+  hoveredTable = null;
   previewTable = null;
   floatingNotes = [];
   document.getElementById("focusControls").dataset.key = "";
@@ -1307,6 +1311,16 @@ function updateProblemPopover() {
   popover.style.top = `${Math.max(8, Math.min(y + 22, room.height - height - 8))}px`;
 }
 
+function tableAtPoint(point) {
+  if (!point?.inside) return null;
+  for (let table = 0; table < cafe.tables; table++) {
+    const position = tablePositions[table], art = tableArtwork(table);
+    if (Math.abs(point.x - position.x) <= art.width / 2 + 12 &&
+        point.y >= position.y - 30 && point.y <= position.y + 90) return table;
+  }
+  return null;
+}
+
 function problemAtPoint(point) {
   if (!point?.inside) return null;
   return problems.find(p => {
@@ -1315,12 +1329,47 @@ function problemAtPoint(point) {
   });
 }
 
+function setCounterTab(tab) {
+  if (!running || !["supplies", "tray", "special", "orders"].includes(tab)) return;
+  counterTab = tab;
+  openFocus("machine");
+  document.getElementById(`counterTabButton-${tab}`)?.focus?.();
+}
+
+function counterOrderMarkup() {
+  return tickets.map(t => {
+    const c = findCustomer(t.id);
+    if (!c) return "";
+    return `<div class="drink-row"><span><b>${esc(c.name)} · T${c.table + 1}</b><small>${esc(t.drink)}${t.special ? " · special" : t.repeat ? " · follow-up" : ""} · ${esc(drinkStatus(c))}</small></span>` +
+      (t.state === "ready" ? `<button onclick="pickupDrink(${c.id})" ${managerTask || carriedTickets().length >= trayCapacity ? "disabled" : ""}>Add to tray</button>` : "") + "</div>";
+  }).join("") || '<p class="muted">No drink orders yet.</p>';
+}
+
 function counterMarkup() {
   const ready = tickets.filter(t => t.state === "ready").length;
-  const special = dailySpecial && dailySpecial.kind !== "none" ? `<div class="counter-special"><strong>${dailySpecial.kind === "quick" ? "Express espresso" : "Coffee + pastry"} · $${dailySpecial.price}</strong><small>${dailySpecial.remaining} offers left · ${dailySpecial.sold} served${dailySpecial.active ? "" : " · paused"}</small><button onclick="stopSpecial()" ${dailySpecial.active ? "" : "disabled"}>Pause promotion</button></div>` : "";
-  return `<div class="counter-layout"><section><h3>Counter supplies</h3>${supplyMarkup()}<p class="muted">Restock yourself for less, or pay $4 extra for a 4s delivery while you stay free. Started drinks use their supplies even if the guest leaves.</p></section>
-    <section><h3>Your tray · ${carriedTickets().length}/${trayCapacity}</h3><button onclick="loadTray()" ${managerTask || !ready || carriedTickets().length>=trayCapacity ? "disabled" : ""}>Load up to 3 ready drinks</button>${special}
-    ${problems.filter(p=>p.kind==='machine').map(problemMarkup).join("")}</section></div>`;
+  const tabs = [["supplies", "Supplies"], ["tray", `Tray ${carriedTickets().length}/${trayCapacity}`],
+    ["special", "Special"], ["orders", `Orders ${tickets.length}`]];
+  const nav = `<div class="counter-tabs" role="group" aria-label="Counter sections">${tabs.map(([id, label]) =>
+    `<button id="counterTabButton-${id}" aria-pressed="${counterTab === id}" onclick="setCounterTab('${id}')">${label}</button>`).join("")}</div>`;
+  let content;
+  if (counterTab === "supplies") {
+    content = supplyMarkup() + '<p class="counter-note">Restock: your time · Delivery: +$4</p>';
+  } else if (counterTab === "tray") {
+    const tray = carriedTickets();
+    const tables = [...new Set(tray.map(t => findCustomer(t.id)?.table).filter(t => t != null))];
+    content = `<button class="counter-load" onclick="loadTray()" ${managerTask || !ready || tray.length >= trayCapacity ? "disabled" : ""}>Load up to 3 ready drinks · ${ready} ready</button>` +
+      (tray.length ? `<div class="tray-contents">${tray.map(t => {
+        const c = findCustomer(t.id);
+        return `<p>${esc(c?.name || "Guest")} · ${esc(t.drink)} · T${(c?.table ?? 0) + 1}</p>`;
+      }).join("")}</div><div class="table-actions">${tables.map(table => `<button onclick="deliverTrayToTable(${table})" ${managerTask ? "disabled" : ""}>Serve T${table + 1}</button>`).join("")}</div>` : '<p class="muted">Your tray is empty.</p>');
+  } else if (counterTab === "special") {
+    content = dailySpecial && dailySpecial.kind !== "none"
+      ? `<div class="counter-special"><strong>${dailySpecial.kind === "quick" ? "Express espresso" : "Coffee + pastry"} · $${dailySpecial.price}</strong><small>${dailySpecial.remaining} left · ${dailySpecial.sold} served${dailySpecial.active ? "" : " · paused"}</small><button onclick="stopSpecial()" ${dailySpecial.active ? "" : "disabled"}>Pause promotion</button></div>`
+      : '<p class="muted">Usual menu today. Choose a special before opening.</p>';
+  } else content = counterOrderMarkup();
+  const fault = problems.find(p => p.kind === "machine");
+  return nav + (fault ? `<button class="counter-fault" onclick="openFocus('problem',${fault.id})">! Machine needs attention</button>` : "") +
+    `<section class="counter-tab-content" aria-label="${counterTab}">${content}</section>`;
 }
 
 function renderOperations() {
@@ -1349,21 +1398,57 @@ function renderOperations() {
     if(timer) timer.textContent=`${Math.max(0,Math.ceil(task.time))}s until +${supplyPacks[task.resource].amount}`;
   }
   for(const p of problems) {
-    const task=managerTask?.problemId===p.id ? managerTask : staff.find(m=>m.assignment?.problemId===p.id)?.assignment;
-    const timer=document.getElementById(`problem-time-${p.id}`);
-    if(timer&&task)timer.textContent=`${Math.max(0,Math.ceil(task.time))}s left`;
+    const task = problemTask(p);
+    const timer = document.getElementById(`problem-time-${p.id}`);
+    if (timer && task) timer.textContent = `${problemWorkPaused(p) ? "Paused · " : ""}${Math.max(0, Math.ceil(task.time))}s left`;
   }
 }
 
+function problemTask(problem) {
+  return managerTask?.problemId === problem.id ? managerTask
+    : staff.find(worker => worker.assignment?.problemId === problem.id)?.assignment || null;
+}
+
+function problemWorkPaused(problem) {
+  return paused || !!guestDrag?.active || staff.some(worker =>
+    worker.assignment?.problemId === problem.id && worker.rest > 0);
+}
+
 function drawProblems(context) {
-  for(const p of problems) {
-    const position=problemPosition(p);
-    if(p.kind==='spill') {
-      context.save();context.globalAlpha=.65;context.fillStyle='#805435';
-      context.beginPath();context.ellipse(position.x,position.y,22,10,-.2,0,Math.PI*2);context.fill();context.restore();
+  for (const problem of problems) {
+    const position = problemPosition(problem);
+    const task = problemTask(problem);
+    if (problem.kind === "spill") {
+      context.save();
+      context.globalAlpha = 0.65;
+      context.fillStyle = "#805435";
+      context.beginPath();
+      context.ellipse(position.x, position.y, 22, 10, -0.2, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
     }
-    drawCircle(position.x,position.y,11,p.assigned?'#e5e7d7':'#f0d6c6',context);
-    context.textAlign='center';context.font='bold 14px sans-serif';context.fillStyle='#98573c';context.fillText(p.assigned?'…':'!',position.x,position.y+5);
+    context.save();
+    drawCircle(position.x, position.y, 14, task ? "#fffaf0" : "#f0d6c6", context);
+    if (task) {
+      const progress = Math.max(0, Math.min(1, 1 - task.time / Math.max(1, task.total)));
+      context.lineWidth = 4;
+      context.strokeStyle = "#fffaf0";
+      context.beginPath();
+      context.arc(position.x, position.y, 18, 0, Math.PI * 2);
+      context.stroke();
+      context.lineWidth = 3;
+      context.strokeStyle = "#d6d9c6";
+      context.stroke();
+      context.strokeStyle = "#59633d";
+      context.beginPath();
+      context.arc(position.x, position.y, 18, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+      context.stroke();
+    }
+    context.textAlign = "center";
+    context.font = task ? "600 12px sans-serif" : "bold 15px sans-serif";
+    context.fillStyle = task ? "#59633d" : "#98573c";
+    context.fillText(task ? problemWorkPaused(problem) ? "Ⅱ" : String(Math.max(0, Math.ceil(task.time))) : "!", position.x, position.y + 5);
+    context.restore();
   }
 }
 
@@ -2137,6 +2222,7 @@ canvas.addEventListener("pointerdown", event => {
 });
 
 canvas.addEventListener("pointermove", event => {
+  hoveredTable = tableAtPoint(canvasPoint(event));
   if (!guestDrag || guestDrag.pointerId !== event.pointerId) return;
   if (!guestDrag.active && Math.hypot(event.clientX - guestDrag.startX, event.clientY - guestDrag.startY) < 7) return;
   if (!guestDrag.active) {
@@ -2160,6 +2246,8 @@ canvas.addEventListener("pointerup", event => {
   if (target == null) managerFeedback("Move cancelled. Drop on a highlighted table to move the party.");
   else movePartyTo(drag.customerId, target);
 });
+
+canvas.addEventListener("pointerleave", () => { hoveredTable = null; });
 
 canvas.addEventListener("pointercancel", () => {
   suppressCanvasClick = !!guestDrag?.active;
@@ -2533,9 +2621,13 @@ function drawCafe(target = canvas, preview = false) {
     context.fillStyle = "#3d3025";
     context.font = "12px sans-serif";
     const occupied = preview ? 0 : customers.filter(c => c.table === index && stillInside(c)).length;
-    context.fillText(`T${index + 1} · ${occupied}/${artwork.chairs.length}`, table.x, table.y + 100);
+    const focused = focus.kind === "table" && focus.id === index ||
+      focus.kind === "customer" && findCustomer(focus.id)?.table === index;
+    const showTableLabel = !preview && (focused || hoveredTable === index || trayTarget ||
+      !!party || !!destination || dragHover || seatingPreview?.table === index);
+    if (showTableLabel) context.fillText(`T${index + 1} · ${occupied}/${artwork.chairs.length}`, table.x, table.y + 100);
     const booking = !preview && reservations.find(r => r.table === index && ["booked", "blocked"].includes(r.state));
-    if (booking) {
+    if (booking && (showTableLabel || focus.kind === "booking" && focus.id === booking.id)) {
       const tagY = table.y + 34;
       context.fillStyle = "#fffaf3";
       context.fillRect(table.x - 38, tagY - 10, 76, 20);
@@ -2546,6 +2638,12 @@ function drawCafe(target = canvas, preview = false) {
       context.textAlign = "center";
       context.font = "11px sans-serif";
       context.fillText(`🔖 ${booking.size || 1} · ${Math.max(0, Math.ceil(booking.at - elapsed()))}s`, table.x, tagY + 4);
+    }
+    if (booking && !showTableLabel && !(focus.kind === "booking" && focus.id === booking.id)) {
+      drawCircle(table.x, table.y + 34, 11, "#fffaf3", context);
+      context.fillStyle = "#59633d";
+      context.font = "13px sans-serif";
+      context.fillText("🔖", table.x, table.y + 39);
     }
     if (!preview && dirtyTables.includes(index)) {
       drawCircle(table.x, table.y, 14, "#fffaf3", context);
@@ -2643,35 +2741,49 @@ function drawDrinkIcon(x, y, drink, fill = 1, context = ctx) {
 function drawCustomers() {
   customers.filter(isSeated).forEach(c => {
     const ticket = tickets.find(t => t.id === c.id);
-    // Small faces stay visible even when a chair obscures the guest's body.
-    const faceX = c.x - 32, faceY = c.y + 1;
-    drawCircle(faceX, faceY, 10, c.happiness >= 60 ? "#e5ead9" : c.happiness < 40 ? "#f0d6c6" : "#f1e5c9");
-    ctx.fillStyle = "#49372e";
-    ctx.font = "14px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(c.happiness >= 60 ? "☺" : c.happiness < 40 ? "☹" : "−", faceX, faceY + 5);
+    const selected = c.id === selectedCustomer;
     const waiting = needsDrink(c);
-    const remaining = c.state === "waiting" ? Math.max(0, 1 - c.timer / c.patience)
-      : c.repeatPending ? remainingVisit(c) / (c.visitLength ?? visitDuration(c)) : c.happiness / 100;
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "#e5d8c2";
-    ctx.beginPath(); ctx.arc(c.x, c.y, 22, 0, 2 * Math.PI); ctx.stroke();
-    ctx.strokeStyle = remaining > 0.4 ? "#7c8758" : "#b66f51";
-    ctx.beginPath(); ctx.arc(c.x, c.y, 22, -Math.PI / 2, -Math.PI / 2 + remaining * 2 * Math.PI); ctx.stroke();
+    const lowPatience = c.state === "waiting" && c.timer / c.patience >= 0.6 ||
+      c.repeatPending && remainingVisit(c) <= 5;
+    const lowMood = c.happiness < 50;
+    const ready = ticket && ["ready", "carried"].includes(ticket.state);
+    // Calm, served guests keep only the expression on their actual face.
+    if (lowMood || selected) {
+      const faceX = c.x - 32, faceY = c.y + 1;
+      drawCircle(faceX, faceY, 10, lowMood ? "#f0d6c6" : "#e5ead9");
+      ctx.fillStyle = "#49372e";
+      ctx.font = "14px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(lowMood ? "☹" : c.happiness >= 60 ? "☺" : "−", faceX, faceY + 5);
+    }
+    if (selected || lowPatience || lowMood) {
+      const remaining = c.state === "waiting" ? Math.max(0, 1 - c.timer / c.patience)
+        : c.repeatPending ? remainingVisit(c) / (c.visitLength ?? visitDuration(c)) : c.happiness / 100;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#e5d8c2";
+      ctx.beginPath(); ctx.arc(c.x, c.y, 22, 0, 2 * Math.PI); ctx.stroke();
+      ctx.strokeStyle = remaining > 0.4 ? "#7c8758" : "#b66f51";
+      ctx.beginPath(); ctx.arc(c.x, c.y, 22, -Math.PI / 2, -Math.PI / 2 + remaining * 2 * Math.PI); ctx.stroke();
+    }
     const bubbleX = c.x, bubbleY = c.y - 41;
-    drawCircle(bubbleX, bubbleY, 17, "#fffaf3");
+    const showBubble = c.waterFeedback > 0 || lowMood || waiting && (selected || lowPatience || ready);
+    const brewing = waiting && ticket?.state === "brewing";
+    if (showBubble) drawCircle(bubbleX, bubbleY, 17, "#fffaf3");
     ctx.textAlign = "center";
     ctx.fillStyle = "#49372e";
     ctx.font = "17px sans-serif";
     if (c.waterFeedback > 0) ctx.fillText("💧", bubbleX, bubbleY + 6);
-    else if (waiting) {
-      const fill = !ticket ? 0 : ticket.state === "brewing" ? 1 - ticket.timer / drinks[ticket.drink].brew : ["ready", "carried"].includes(ticket.state) ? 1 : 0;
+    else if (waiting && (showBubble || brewing)) {
+      // Brewing remains visible as a small filling cup, without a speech bubble.
+      const fill = !ticket ? 0 : brewing ? 1 - ticket.timer / drinks[ticket.drink].brew : ready ? 1 : 0;
       drawDrinkIcon(bubbleX - 3, bubbleY, c.drink, fill);
-      ctx.font = "12px sans-serif";
-      ctx.fillStyle = ticket && ["ready", "carried"].includes(ticket.state) ? "#59633d" : "#98573c";
-      ctx.fillText(!ticket ? "?" : { queued: "◷", brewing: "♨", ready: "✓", carried: "➜" }[ticket.state], bubbleX + 12, bubbleY + 10);
-    } else ctx.fillText(c.happiness < 50 ? "😠" : "♡", bubbleX, bubbleY + 6);
-    if (c.specialKind) {
+      if (showBubble) {
+        ctx.font = "12px sans-serif";
+        ctx.fillStyle = ready ? "#59633d" : "#98573c";
+        ctx.fillText(lowPatience && !ready ? "!" : !ticket ? "?" : { queued: "◷", brewing: "♨", ready: "✓", carried: "➜" }[ticket.state], bubbleX + 12, bubbleY + 10);
+      }
+    } else if (lowMood) ctx.fillText("!", bubbleX, bubbleY + 6);
+    if (c.specialKind && selected) {
       ctx.font = "13px sans-serif";
       ctx.fillText(c.specialKind === "pastry" ? "🥐" : "→", c.x + 29, c.y - 16);
     }
@@ -2693,8 +2805,10 @@ function drawCustomers() {
   ctx.font = "13px sans-serif";
   const ready = tickets.filter(t => t.state === "ready").length;
   const brewing = tickets.filter(t => t.state === "brewing").length;
-  ctx.fillStyle = "#fffaf3"; ctx.fillRect(machine.x - 10, machine.y + machine.height + 7, machine.width + 20, 24);
-  ctx.fillStyle = "#3d3025"; ctx.fillText(`♨ ${brewing}    ✓ ${ready}`, machine.x + machine.width / 2, machine.y + machine.height + 24);
+  if (brewing || ready || focus.kind === "machine") {
+    ctx.fillStyle = "#fffaf3"; ctx.fillRect(machine.x - 10, machine.y + machine.height + 7, machine.width + 20, 24);
+    ctx.fillStyle = "#3d3025"; ctx.fillText(`♨ ${brewing}    ✓ ${ready}`, machine.x + machine.width / 2, machine.y + machine.height + 24);
+  }
   floatingNotes.forEach(n => {
     ctx.globalAlpha = Math.min(1, n.life);
     ctx.fillStyle = "#fffaf3";
@@ -3261,6 +3375,7 @@ function openFocus(kind, id = null) {
   const changed = focus.kind !== kind || focus.id !== id;
   focus = { kind, id };
   if (changed) {
+    if (kind === "machine" && coffeeServiceStatus().state === "supplies") counterTab = "supplies";
     previewTable = null;
     document.getElementById("sceneActionPanel").scrollTop = 0;
   }
@@ -3345,7 +3460,7 @@ function updateFocusPanel() {
     seated.map(c => [c.id, c.table, c.seatIndex, c.type, c.quietFor > 0]),
     dirtyTables, reservations.map(r => [r.id, r.table, r.state]),
     cafe.music, cafe.sound, getTrend().noise, !!liveAct, cafe.tables, problems.map(p=>[p.id,p.table])] :
-    [focus, seated.map(c => [c.id, c.table, c.state, c.repeatPending, c.seatIndex, c.type, c.quietFor > 0]),
+    [focus, counterTab, seated.map(c => [c.id, c.table, c.state, c.repeatPending, c.seatIndex, c.type, c.quietFor > 0]),
     cafe.music, cafe.sound, getTrend().noise, dirtyTables,
     tickets.map(t => [t.id, t.state]), waitingParties.map(p => p.id),
     reservations.map(r => [r.id, r.table, r.state]), requests.map(r => r.id), !!liveAct, cafe.tables,
@@ -3369,13 +3484,8 @@ function updateFocusPanel() {
   }
   if (focus.kind === "machine") {
     title.textContent = "The counter";
-    detail.textContent = "Supplies, ready drinks & your tray.";
-    html = counterMarkup() + '<section class="counter-orders"><h3>Drink orders</h3>' + (tickets.map(t => {
-      const c = findCustomer(t.id);
-      if (!c) return "";
-      return `<div class="drink-row"><span><b>${esc(c.name)} · T${c.table + 1}</b><small>${esc(t.drink)}${t.special ? " · special" : t.repeat ? " · follow-up" : ""} · ${esc(drinkStatus(c))}</small></span>` +
-        (t.state === "ready" ? `<button onclick="pickupDrink(${c.id})" ${managerTask || carriedTickets().length >= trayCapacity ? "disabled" : ""}>Add to tray</button>` : "") + "</div>";
-    }).join("") || '<p class="muted">No drink orders yet.</p>') + '</section>';
+    detail.textContent = "";
+    html = counterMarkup();
   }
   if (focus.kind === "problem") {
     const problem = problems.find(p=>p.id===focus.id);
