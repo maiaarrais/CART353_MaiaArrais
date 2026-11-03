@@ -196,12 +196,11 @@ function updateSetup() {
   document.getElementById("specialLimit").value = cafe.special.limit;
   document.getElementById("specialPrice").disabled = cafe.special.kind === "none";
   document.getElementById("specialLimit").disabled = cafe.special.kind === "none";
-  document.getElementById("specialDescription").textContent = specialDescription(cafe.special.kind);
+  document.getElementById("specialDescription").textContent = cafe.special.kind === "quick"
+    ? "Guests leave 3s after service."
+    : cafe.special.kind === "pastry" ? "Uses 1 pastry · +5 mood · longer visits." : "";
   document.getElementById("setupSupplies").innerHTML = supplyMarkup(true);
-  updateIdentity();
   updateTradeoffPreview();
-  const trend = getTrend();
-  document.getElementById("setupTrend").textContent = `Today: ${trend.title}. ${trend.blurb}`;
   updateSetupPreview();
 }
 
@@ -216,16 +215,6 @@ document.getElementById("music").oninput = function() {
   saveGame();
   updateSetup();
 };
-
-function updateIdentity() {
-  const r = cafe.rep;
-  const top = Object.keys(r).sort((x, y) => r[y] - r[x])[0];
-  const leans = { student: "students", social: "a lively crowd", regular: "your regulars" };
-  document.getElementById("identity").textContent = "What your café is becoming";
-  document.getElementById("prediction").textContent = r[top] < 1
-    ? "Your café hasn't decided what it is yet. Watch who stays and who leaves."
-    : `Lately it leans toward ${leans[top]}. Whatever you change here pulls it somewhere.`;
-}
 
 // --------------------
 // CUSTOMER TYPES
@@ -391,7 +380,7 @@ async function startDay() {
       `Could not load: ${failedAssets.join(", ")}. Reload the page to try again.`;
     return;
   }
-  document.getElementById("message").textContent = "What will you improve today?";
+  document.getElementById("message").textContent = "";
   if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
 
   customers = [];
@@ -698,11 +687,7 @@ function updateTradeoffPreview() {
     const acceptance = Math.round((1 - priceRefusalChance(type, price)) * 100);
     return `<div><span>${labels[type]}</span><strong>$${price}</strong><small>~${acceptance}% enter</small></div>`;
   }).join("");
-  document.getElementById("upgradeTradeoffs").textContent =
-    `Students stay about ${visitDuration({type:"student"})}s after their first drink (20s maximum). ` +
-    `With your Wi-Fi, content students have a ${Math.round(Math.min(0.85, 0.4 + cafe.wifi * 0.15) * 100)}% chance to request one more small drink if enough visit time remains. Reorders never extend checkout. ` +
-    `Social neighbour buzz is ${Math.round(Math.max(0.3, 1 - cafe.sound * 0.2) * 100)}% strength with ${cafe.sound} sound panels. ` +
-    "Wi-Fi trades slower turnover for cheaper repeat orders; panels protect quiet guests but weaken the social atmosphere.";
+
 }
 
 function updateOrderStatus() {
@@ -2377,9 +2362,7 @@ function updateSetupPreview() {
     if (label) label.textContent = cafe[key];
   }
   const day = document.getElementById("setupDay");
-  const mission = document.getElementById("setupMission");
   if (day) day.textContent = cafe.day;
-  if (mission) mission.textContent = getMission().title;
 }
 
 function drawCustomerBody(c, context) {
@@ -3210,3 +3193,4 @@ function updateConcerns() {
 
 // Begin with today's mission before preparing the café.
 showScreen("scenario");
+

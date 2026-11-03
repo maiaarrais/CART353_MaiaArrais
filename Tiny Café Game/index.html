@@ -36,7 +36,7 @@
       <span class="step-label">02 / Before opening · Day <span id="setupDay">1</span></span>
     </header>
     <div class="setup-heading">
-      <div><p class="eyebrow" id="setupMission"></p><h1 id="setupTitle">Make it yours.</h1></div>
+      <div><h1 id="setupTitle">Build your shop</h1></div>
       <div class="budget-total"><span>Available to spend</span><strong>$<span id="budget">150</span></strong></div>
     </div>
     <main class="setup-body">
@@ -47,40 +47,38 @@
           <span>Wi-Fi <b id="previewWifi">0</b>/3</span>
           <span>Sound panels <b id="previewSound">0</b>/3</span>
         </div>
-        <div class="prediction-box"><h2 id="identity">Your café's atmosphere</h2><p id="prediction"></p><p class="trend-note" id="setupTrend"></p></div>
       </div>
       <aside class="setup-sidebar" aria-label="Shop and café settings">
-        <div class="section-heading"><h2>A few improvements</h2><small>Yours to keep</small></div>
+        <div class="section-heading"><h2>Upgrades</h2></div>
         <div class="shop">
           <div class="item">
-            <div><h3>Extra table</h3><p>More seats, a busier room.</p><small><span id="tables">3</span> of 6 tables</small></div>
+            <div><h3>Extra table</h3><p>More seats.</p><small><span id="tables">3</span> of 6 tables</small></div>
             <button data-upgrade="tables" data-cost="40" onclick="buyUpgrade('tables', 40)" aria-label="Buy an extra table for 40 dollars">$40</button>
           </div>
           <div class="item">
-            <div><h3>Better Wi-Fi</h3><p>Longer visits (max 20s after service), with more chances of a second drink.</p><small>Level <span id="wifi">0</span> of 3</small></div>
+            <div><h3>Better Wi-Fi</h3><p>Longer visits, more repeat orders.</p><small>Level <span id="wifi">0</span> of 3</small></div>
             <button data-upgrade="wifi" data-cost="50" onclick="buyUpgrade('wifi', 50)" aria-label="Upgrade Wi-Fi for 50 dollars">$50</button>
           </div>
           <div class="item">
-            <div><h3>Sound panels</h3><p>Less distraction, but less buzz between social guests.</p><small>Level <span id="sound">0</span> of 3</small></div>
+            <div><h3>Sound panels</h3><p>Less noise, less social buzz.</p><small>Level <span id="sound">0</span> of 3</small></div>
             <button data-upgrade="sound" data-cost="45" onclick="buyUpgrade('sound', 45)" aria-label="Buy sound panels for 45 dollars">$45</button>
           </div>
           <div class="item">
-            <div><h3>Hire a barista</h3><p>Another pair of hands, with their own habits.</p><small><span id="staffCount">1</span> of 3 staff</small></div>
+            <div><h3>Hire a barista</h3><small><span id="staffCount">1</span> of 3 staff</small></div>
             <button id="hireButton" onclick="hireStaff()" aria-label="Hire a barista for 60 dollars">$60</button>
           </div>
         </div>
         <div class="setup-settings">
-          <h2>The finishing touches</h2>
+          <h2>Settings</h2>
           <label for="price">Coffee price <strong>$<span id="priceValue">5</span></strong></label>
           <input type="range" id="price" min="3" max="8" value="5">
           <div id="priceImpact" class="price-outlook" aria-label="Estimated usual-menu espresso demand by customer type"></div>
-          <p class="tradeoff-note">Students pay $1 less on the usual menu and usually choose cheaper drinks. Regulars tolerate higher prices. Estimates are for espresso, before specials; lower prices improve demand but reduce each sale.</p>
+          <p class="tradeoff-note">Espresso demand · Students pay $1 less.</p>
           <label for="music">Music volume <strong><span id="musicValue">3</span>/10</strong></label>
           <input type="range" id="music" min="0" max="10" value="3">
-          <p id="upgradeTradeoffs" class="tradeoff-note"></p>
         </div>
         <section class="counter-prep" aria-labelledby="prepTitle">
-          <h2 id="prepTitle">Before the rush</h2><p class="muted">Supplies carry between days. Buy packs now or restock during service.</p>
+          <h2 id="prepTitle">Supplies</h2><p class="muted">Unused supplies carry over.</p>
           <div id="setupSupplies"></div>
           <h3>Today's special</h3>
           <label for="specialKind">Offer</label><select id="specialKind" onchange="setDailySpecial()"><option value="none">Usual menu only</option><option value="quick">Express espresso</option><option value="pastry">Coffee + pastry</option></select>
@@ -88,7 +86,7 @@
           <p id="specialDescription" class="muted"></p>
         </section>
         <footer class="setup-actions">
-          <p id="message" role="status">What will you improve today?</p>
+          <p id="message" role="status"></p>
           <button class="primary" onclick="startDay()">Open the doors <span aria-hidden="true">→</span></button>
         </footer>
       </aside>
@@ -199,3 +197,4 @@
   <script src="script.js"></script>
 </body>
 </html>
+
