@@ -199,6 +199,7 @@ function updateSetup() {
   document.getElementById("specialDescription").textContent = specialDescription(cafe.special.kind);
   document.getElementById("setupSupplies").innerHTML = supplyMarkup(true);
   updateIdentity();
+  updateTradeoffPreview();
   const trend = getTrend();
   document.getElementById("setupTrend").textContent = `Today: ${trend.title}. ${trend.blurb}`;
   updateSetupPreview();
@@ -233,21 +234,30 @@ function updateIdentity() {
 const customerTypes = {
   student: {
     color: "#90a8bb",
-    stay: 12,
+    stay: 18,
     patience: 12,
-    noiseTolerance: 4
+    noiseTolerance: 4,
+    priceAdjustment: -1,
+    priceComfort: 3.8,
+    priceSpread: 0.9
   },
   social: {
     color: "#d99c88",
     stay: 9,
     patience: 10,
-    noiseTolerance: 9
+    noiseTolerance: 9,
+    priceAdjustment: 0,
+    priceComfort: 7,
+    priceSpread: 1.2
   },
   regular: {
     color: "#d6b274",
     stay: 8,
     patience: 14,
-    noiseTolerance: 6
+    noiseTolerance: 6,
+    priceAdjustment: 0,
+    priceComfort: 9,
+    priceSpread: 1.25
   }
 };
 
@@ -364,6 +374,7 @@ let effects;
 let arrivals;
 let satisfactionTotal;
 let completedVisits;
+let customerSpending = {};
 
 // --------------------
 // START THE DAY
@@ -459,6 +470,7 @@ async function startDay() {
 
   satisfactionTotal = 0;
   completedVisits = 0;
+  customerSpending = Object.fromEntries(Object.keys(customerTypes).map(type => [type, { served: 0, revenue: 0 }]));
 
   document.getElementById("eventLog").innerHTML = "";
   const mission = getMission();
@@ -570,11 +582,14 @@ function createCustomer() {
     addEvent("A student is interested in your café's Wi-Fi.");
   }
 
-  // Price can discourage visitors
-  if (Math.random() < Math.max(0, (specialAvailable() ? Math.min(cafe.price, dailySpecial.price) : cafe.price) - 5) * 0.15) {
+  // Each crowd weighs the advertised espresso price differently, across the
+  // whole slider range. Actual usual-menu orders keep the student's $1 reduction.
+  const menuQuote = drinkPrice("espresso", type);
+  const quotedPrice = specialAvailable() ? Math.min(menuQuote, dailySpecial.price) : menuQuote;
+  if (Math.random() < priceRefusalChance(type, quotedPrice)) {
     outcomes.turnedAway += size;
     effects.priceRefusals += size;
-    addEvent(`A ${type} refused your coffee price.`, true);
+    addEvent(`A ${type} party declined the $${quotedPrice} advertised price.`, true);
     return;
   }
 
@@ -636,7 +651,34 @@ const hireable = [
   { name: "Kai", speed: 1.1, sloppy: 0.12, warmth: 0.7 }
 ];
 const findCustomer = id => customers.find(c => c.id === id);
-const drinkPrice = drink => cafe.price + drinks[drink].bonus;
+const drinkPrice = (drink, type = "regular") => Math.max(1,
+  cafe.price + drinks[drink].bonus + customerTypes[type].priceAdjustment);
+
+function priceRefusalChance(type, price) {
+  const traits = customerTypes[type];
+  const chance = 1 / (1 + Math.exp(-(price - traits.priceComfort) / traits.priceSpread));
+  return Math.max(0.02, Math.min(0.95, chance));
+}
+
+function visitDuration(customer) {
+  if (customer.specialKind === "quick") return 3;
+  return customerTypes[customer.type].stay + getTrend().stay +
+    (customer.specialKind === "pastry" ? 4 : 0) +
+    (customer.type === "student" ? cafe.wifi * 5 : 0);
+}
+
+function updateTradeoffPreview() {
+  const labels = { student: "Students", social: "Social", regular: "Regulars" };
+  document.getElementById("priceImpact").innerHTML = Object.keys(customerTypes).map(type => {
+    const price = drinkPrice("espresso", type);
+    const acceptance = Math.round((1 - priceRefusalChance(type, price)) * 100);
+    return `<div><span>${labels[type]}</span><strong>$${price}</strong><small>~${acceptance}% enter</small></div>`;
+  }).join("");
+  document.getElementById("upgradeTradeoffs").textContent =
+    `Students stay about ${visitDuration({type:"student"})}s after service with your Wi-Fi, buying one drink. ` +
+    `Social neighbour buzz is ${Math.round(Math.max(0.3, 1 - cafe.sound * 0.2) * 100)}% strength with ${cafe.sound} sound panels. ` +
+    "More Wi-Fi fills seats with longer, lower-spend visits; more panels protect quiet guests but weaken the social atmosphere.";
+}
 
 function updateOrderStatus() {
   updateCarryingBanner();
@@ -652,7 +694,7 @@ function takeOrder(customer, by) {
     addFloat(customer, dailySpecial.kind === "quick" ? "Express special" : "Coffee + pastry");
   }
   tickets.push({ id: customer.id, drink: customer.drink, state: "queued", timer: 0,
-    price: special ? special.price : drinkPrice(customer.drink), special });
+    price: special ? special.price : drinkPrice(customer.drink, customer.type), special });
   addEvent(`${by ? by.name + " took" : "You took"} ${customer.name}'s ${customer.drink} order.`);
   updateOrderStatus();
   return true;
@@ -717,7 +759,7 @@ function serve(customer, by) {
     }
   }
   customer.happiness = Math.max(0, Math.min(100, customer.happiness + boost));
-  const revenue = (ticket.price ?? drinkPrice(customer.drink)) + tip;
+  const revenue = (ticket.price ?? drinkPrice(customer.drink, customer.type)) + tip;
   customer.specialKind = ticket.special?.kind || null;
   if (ticket.special) {
     dailySpecial.sold++;
@@ -727,6 +769,8 @@ function serve(customer, by) {
   }
   if (!by && ticket.state === "carried") operationsStats.trayServed++;
   sales += revenue;
+  customerSpending[customer.type].served++;
+  customerSpending[customer.type].revenue += revenue;
   addFloat(customer, `+$${revenue} ✓`);
   addEvent(`${by ? by.name + " served" : "You served"} ${customer.name}. +$${revenue}`);
   updateOrderStatus();
@@ -1753,13 +1797,14 @@ function neighbourEffect(a, b) {
   const damp = Math.max(0.3, 1 - cafe.sound * 0.2);
   if (loudA && b.type === "student" || loudB && a.type === "student") {
     const loud = loudA ? a : b, quiet = loudA ? b : a;
-    return { kind: "annoy", aRate: loudA ? 0.8 : -2.5 * damp,
-      bRate: loudA ? -2.5 * damp : 0.8, loud, quiet,
+    return { kind: "annoy", aRate: loudA ? 0.8 * damp : -2.5 * damp,
+      bRate: loudA ? -2.5 * damp : 0.8 * damp, loud, quiet,
       text: `${quiet.name} is distracted by ${loud.name}'s table.` };
   }
   if (loudA && loudB || a.type === "regular" && b.type === "regular") {
-    return { kind: "buzz", aRate: 0.8, bRate: 0.8,
-      boost: "good company was nearby", text: `${a.name} and ${b.name} are hitting it off.` };
+    const rate = 0.8 * (loudA && loudB ? damp : 1);
+    return { kind: "buzz", aRate: rate, bRate: rate,
+      boost: "good company was nearby", text: `${a.name} and ${b.name} are hitting it off${loudA && loudB && cafe.sound > 0 ? " (panels soften their buzz)" : ""}.` };
   }
   if (a.type === "student" && b.type === "student") {
     return { kind: "buzz", aRate: 0.4, bRate: 0.4,
@@ -1859,11 +1904,7 @@ function updateCustomers(dt) {
         c.happiness += 0.4 * dt;
       }
 
-      let stayTime = c.specialKind === "quick" ? 3 : traits.stay + getTrend().stay + (c.specialKind === "pastry" ? 4 : 0);
-
-      if (c.type === "student" && c.specialKind !== "quick") {
-        stayTime += cafe.wifi * 5;
-      }
+      const stayTime = visitDuration(c);
 
       if (c.happiness < 30 || c.timer >= stayTime) {
         leaveCustomer(c);
@@ -2605,6 +2646,10 @@ Regulars: ${arrivals.regular}`;
   renderReviews();
   document.getElementById("resultEffects").textContent +=
     `\nSupply costs: $${operationsStats.restockCost}\nSpecials served: ${operationsStats.specialSold} ($${operationsStats.specialSales})\nTray deliveries: ${operationsStats.trayServed}\nProblems fixed: ${operationsStats.fixed}\nPrepared drinks wasted: ${operationsStats.waste}\nStock carried forward: ${stock.cups} cups, ${stock.milk} milk, ${stock.pastries} pastries`;
+  document.getElementById("resultEffects").textContent += "\n\nSpending by crowd (before supply costs):\n" +
+    Object.entries(customerSpending).map(([type, result]) =>
+      `${type}: ${result.served} served · $${result.revenue} · $${(result.served ? result.revenue / result.served : 0).toFixed(2)} per guest`
+    ).join("\n");
   document.getElementById("resultMoney").textContent = cafe.budget;
 
   cafe.day++;
@@ -2670,7 +2715,7 @@ function seatingForecast(party, table) {
         ? guest.type === "student"
           ? `${party.who.name}'s students would be distracted by ${other.name}'s social table (T${other.table + 1}).`
           : `${other.name} (student, T${other.table + 1}) would be distracted by this party.`
-        : `${other.name}'s ${other.type} table (T${other.table + 1}): ${guest.type === "student" ? "studying side by side" : "good company for both tables"}.`;
+        : `${other.name}'s ${other.type} table (T${other.table + 1}): ${guest.type === "student" ? "studying side by side" : "good company for both tables"} (+${effect.aRate.toFixed(2)} mood/s${guest.type === "social" && cafe.sound > 0 ? "; panels soften the buzz" : ""}).`;
       if (!notes.has(key)) notes.set(key, note);
     }
   }

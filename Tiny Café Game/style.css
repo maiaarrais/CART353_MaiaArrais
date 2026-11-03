@@ -383,3 +383,9 @@ select { font: inherit; color: var(--ink); background: var(--cream); border: 1px
 .carrying-banner > strong, .carrying-banner > span { display: block; margin-bottom: 8px; }
 .carrying-banner > span { font-size: 12px; line-height: 1.5; }
 @media(max-width:650px) { .counter-layout { grid-template-columns: minmax(0,1fr); gap: 18px; } .manager-work { flex-wrap: wrap; } }
+
+.price-outlook { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin: 12px 0; }
+.price-outlook > div { border-left: 2px solid var(--line); padding-left: 8px; }
+.price-outlook span, .price-outlook small { display: block; font-size: 10px; }
+.price-outlook strong { display: block; color: var(--olive); font: 22px Georgia,serif; margin: 4px 0; }
+.tradeoff-note { font-size: 11px; line-height: 1.6; color: var(--muted); margin: 10px 0 16px; }

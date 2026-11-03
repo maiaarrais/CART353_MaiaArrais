@@ -57,11 +57,11 @@
             <button data-upgrade="tables" data-cost="40" onclick="buyUpgrade('tables', 40)" aria-label="Buy an extra table for 40 dollars">$40</button>
           </div>
           <div class="item">
-            <div><h3>Better Wi-Fi</h3><p>For students settling in.</p><small>Level <span id="wifi">0</span> of 3</small></div>
+            <div><h3>Better Wi-Fi</h3><p>More budget-minded students; longer occupied tables.</p><small>Level <span id="wifi">0</span> of 3</small></div>
             <button data-upgrade="wifi" data-cost="50" onclick="buyUpgrade('wifi', 50)" aria-label="Upgrade Wi-Fi for 50 dollars">$50</button>
           </div>
           <div class="item">
-            <div><h3>Sound panels</h3><p>A softer, quieter atmosphere.</p><small>Level <span id="sound">0</span> of 3</small></div>
+            <div><h3>Sound panels</h3><p>Less distraction, but less buzz between social guests.</p><small>Level <span id="sound">0</span> of 3</small></div>
             <button data-upgrade="sound" data-cost="45" onclick="buyUpgrade('sound', 45)" aria-label="Buy sound panels for 45 dollars">$45</button>
           </div>
           <div class="item">
@@ -73,8 +73,11 @@
           <h2>The finishing touches</h2>
           <label for="price">Coffee price <strong>$<span id="priceValue">5</span></strong></label>
           <input type="range" id="price" min="3" max="8" value="5">
+          <div id="priceImpact" class="price-outlook" aria-label="Estimated usual-menu espresso demand by customer type"></div>
+          <p class="tradeoff-note">Students pay $1 less on the usual menu and usually choose cheaper drinks. Regulars tolerate higher prices. Estimates are for espresso, before specials; lower prices improve demand but reduce each sale.</p>
           <label for="music">Music volume <strong><span id="musicValue">3</span>/10</strong></label>
           <input type="range" id="music" min="0" max="10" value="3">
+          <p id="upgradeTradeoffs" class="tradeoff-note"></p>
         </div>
         <section class="counter-prep" aria-labelledby="prepTitle">
           <h2 id="prepTitle">Before the rush</h2><p class="muted">Supplies carry between days. Buy packs now or restock during service.</p>
