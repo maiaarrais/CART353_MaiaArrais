@@ -22,6 +22,7 @@
         <h1 id="missionTitle">A new day at the café</h1>
         <p id="missionDescription" class="intro"></p>
         <ul id="missionGoals" class="mission-goals" aria-label="Today's goals"></ul>
+        <p class="hint"><span>In the neighbourhood today · <b id="trendTitle"></b></span><span id="trendText"></span></p>
         <p class="hint"><span>A little advice</span><span id="missionHint"></span></p>
         <button class="primary" onclick="showScreen('setup')">Prepare your café <span aria-hidden="true">→</span></button>
       </div>
@@ -46,7 +47,7 @@
           <span>Wi-Fi <b id="previewWifi">0</b>/3</span>
           <span>Sound panels <b id="previewSound">0</b>/3</span>
         </div>
-        <div class="prediction-box"><h2 id="identity">Your café's atmosphere</h2><p id="prediction"></p></div>
+        <div class="prediction-box"><h2 id="identity">Your café's atmosphere</h2><p id="prediction"></p><p class="trend-note" id="setupTrend"></p></div>
       </div>
       <aside class="setup-sidebar" aria-label="Shop and café settings">
         <div class="section-heading"><h2>A few improvements</h2><small>Yours to keep</small></div>
@@ -75,6 +76,14 @@
           <label for="music">Music volume <strong><span id="musicValue">3</span>/10</strong></label>
           <input type="range" id="music" min="0" max="10" value="3">
         </div>
+        <section class="counter-prep" aria-labelledby="prepTitle">
+          <h2 id="prepTitle">Before the rush</h2><p class="muted">Supplies carry between days. Buy packs now or restock during service.</p>
+          <div id="setupSupplies"></div>
+          <h3>Today's special</h3>
+          <label for="specialKind">Offer</label><select id="specialKind" onchange="setDailySpecial()"><option value="none">Usual menu only</option><option value="quick">Express espresso</option><option value="pastry">Coffee + pastry</option></select>
+          <div class="special-fields"><label for="specialPrice">Price ($)<input id="specialPrice" type="number" min="2" max="12" step="1" value="4" onchange="setDailySpecial()"></label><label for="specialLimit">Quantity<input id="specialLimit" type="number" min="1" max="10" step="1" value="5" onchange="setDailySpecial()"></label></div>
+          <p id="specialDescription" class="muted"></p>
+        </section>
         <footer class="setup-actions">
           <p id="message" role="status">What will you improve today?</p>
           <button class="primary" onclick="startDay()">Open the doors <span aria-hidden="true">→</span></button>
@@ -86,41 +95,78 @@
   <section id="play" class="screen" aria-label="Café gameplay">
     <div class="game-layout">
       <header class="game-header">
-        <div class="game-heading"><span class="wordmark">Little Café<span class="wordmark-dot">.</span></span><p id="activeMission"></p></div>
+        <div class="game-heading"><span class="wordmark">Little Café<span class="wordmark-dot">.</span></span><p id="activeMission"></p><p id="phaseLine"><b id="phaseName"></b> · <span id="trendName"></span></p></div>
         <div class="game-stats" aria-label="Today's progress">
           <div class="time-stat"><span>Time left</span><strong><span id="time">60</span><small>s</small></strong></div>
           <div><span>Earnings</span><strong>$<span id="sales">0</span><small> / $<span id="salesGoal">20</span></small></strong></div>
           <div><span>Happy visits</span><strong><span id="happy">0</span><small> / <span id="happyGoal">3</span></small></strong></div>
         </div>
       </header>
-      <main class="cafe-area">
-        <canvas id="cafeCanvas" width="1000" height="542" aria-label="Click a seated customer to order, the counter's coffee machine to brew, and dirty tables to clean them"></canvas>
-      </main>
-      <div class="identity-bar"><span>Café identity</span><div class="identity-track">
-        <i id="id-student" style="background:#90a8bb">Students</i><i id="id-social" style="background:#d99c88">Social</i><i id="id-regular" style="background:#d6b274">Regulars</i></div></div>
-      <div class="staff-row" id="staffRow" aria-label="Staff"></div>
-      <div class="service-dock">
-        <div class="service-instruction"><strong id="orderStatus">Ready to welcome customers</strong><p id="serviceHelp">Click a customer's coffee bubble to take an order.</p></div>
+      <div class="manager-toolbar">
+        <button id="pauseButton" onclick="togglePause()">⏸ Pause</button>
+        <label>Pace <select id="speedControl" onchange="gameSpeed = Number(this.value)"><option value="0.65">Slow</option><option value="1">Normal</option></select></label>
+        <button id="counterStatus" onclick="openFocus('machine')">Counter supplies & tray</button>
+        <span id="roomStatus">♫ <span id="liveNoiseLabel">Quiet</span></span>
+      </div>
+      <div id="managerWork" class="manager-work" hidden><span id="managerTaskName"></span><progress id="managerTaskProgress" value="0" max="100" aria-label="Your task progress"></progress></div>
+      <div class="room-workspace">
+        <main class="cafe-area">
+          <canvas id="cafeCanvas" width="1000" height="542" aria-label="Drag a guest to another table to move their whole party. Click guests or tables for actions, or the machine for drink orders."></canvas>
+          <p id="dragHint" class="drag-hint" role="status" hidden></p>
+          <div id="roomInsights" class="room-insights" aria-label="Live table relationships"></div>
+          <div class="visual-legend" aria-label="Status key"><span>↔ Drag a guest to move their party</span><span>◷ Waiting</span><span>♨ Brewing</span><span>✓ Ready</span><span>♡ Served</span><span>◔ Patience ring</span></div>
+          <div class="emergence-legend"><span class="company-key">+ Good company</span><span class="distraction-key">! Distraction</span><span>Warm floor glow = room noise and loud tables</span></div>
+          <div class="staff-row" id="staffRow" aria-label="Staff"></div>
+        </main>
+        <aside class="attention-panel" aria-label="Needs attention">
+          <h2>Needs attention</h2>
+          <section id="seatingPlanner" class="seating-planner" hidden aria-labelledby="seatingPlannerTitle">
+            <button class="text-button" onclick="openFocus('none')">← Back to the waiting list</button>
+            <h3 id="seatingPlannerTitle">Seating forecast</h3>
+            <div id="seatingOptions"></div>
+          </section>
+          <section class="waiting-room" aria-label="Waiting parties"><h3>🚪 At the door</h3><div id="waitingList"></div></section>
+          <section class="inbox" aria-labelledby="inboxTitle"><h3 id="inboxTitle">💬 Requests <small id="inboxCount"></small></h3><div id="inboxList"></div></section>
+          <section class="board" aria-labelledby="boardTitle"><h3 id="boardTitle">🔖 Bookings</h3><div id="boardList"></div></section>
+          <section aria-label="Problems to handle"><h3>On the floor</h3><div id="problemList"></div></section>
+          <section aria-label="Customer concerns"><h3>⚑ In the room</h3><div id="concernList"></div></section>
+        </aside>
+      </div>
+      <div id="carryingBanner" class="carrying-banner" role="status" hidden></div>
+      <section class="service-dock" aria-label="Selected guest or table">
+        <div class="service-instruction"><strong id="orderStatus">Select a guest, table, or request</strong><p id="serviceHelp">Staff handle orders and delivery. You manage the room.</p></div>
+        <div id="focusControls" class="focus-controls"></div>
         <div id="customerControls" class="customer-controls" hidden>
-          <div><span id="selectedCustomer">None</span><label for="selectedPatience" id="patienceLabel">Patience</label><progress id="selectedPatience" max="100" value="100">100%</progress></div>
-          <button id="waterButton" onclick="offerWater()" title="Refills patience once per waiting customer for $2">Give water · $2</button>
+          <div class="customer-summary"><span id="selectedCustomer">None</span><label for="selectedPatience" id="patienceLabel">Patience</label><progress id="selectedPatience" max="100" value="100">100%</progress></div>
+          <div id="partyOrderList" class="party-orders" aria-label="Party drink orders"></div>
+          <div class="table-actions main-actions">
+            <button id="helpDrinkButton" onclick="helpSelectedDrink()">☕ Help deliver</button>
+            <button id="priorityButton" onclick="customerAction('priority')">↑ Prioritize</button>
+            <button id="waterButton" onclick="offerWater()">💧 Water · $2</button>
+            <button id="calmButton" onclick="customerAction('calm')">🤫 Ask for quiet</button>
+          </div>
+          <p id="customerIssue"></p>
+          <details class="more-actions"><summary>Other actions & keyboard move</summary><div class="table-actions">
+            <label>Move party to <select id="moveTable"></select></label><button id="moveButton" onclick="moveSelectedParty()">Move · mood −4 each</button>
+            <button id="refundButton" onclick="customerAction('refund')">Refund · $3 / mood +25</button><button id="finishButton" onclick="customerAction('finish')">Finish visit · mood −8 each</button>
+          </div></details>
           <span id="waterStatus" class="water-status" role="status"></span>
         </div>
-      </div>
+      </section>
+      <p id="actionFeedback" class="action-feedback" role="status" aria-live="polite">Choose a waiting group to seat them.</p>
       <footer class="game-footer">
-        <p id="gameMessage" role="status">The doors are open.</p>
-        <div class="music-control"><label for="liveMusic">Music</label><input type="range" id="liveMusic" min="0" max="10" value="3"><output id="liveMusicValue" for="liveMusic">3</output></div>
+        <div class="music-control"><label for="liveMusic">♫ Music</label><input type="range" id="liveMusic" min="0" max="10" value="3"><output id="liveMusicValue" for="liveMusic">3</output></div>
         <button class="text-button" onclick="endDay()">Close early</button>
       </footer>
-      <div class="game-drawers">
-        <details id="dayDetails"><summary>Day details</summary><div class="detail-stats">
+      <div class="game-drawers"><details><summary>Room overview</summary><div id="roomOverview" class="table-actions" aria-label="Select a table"></div></details>
+        <details id="dayDetails"><summary>Day details</summary><div class="identity-bar"><span>Café identity</span><div class="identity-track"><i id="id-student" style="background:#90a8bb">Students</i><i id="id-social" style="background:#d99c88">Social</i><i id="id-regular" style="background:#d6b274">Regulars</i></div></div><div class="detail-stats">
           <div><span>Orders served</span><strong id="served">0</strong></div>
           <div><span>Turned away</span><strong id="turnedAway">0</strong></div>
           <div><span>Noise level</span><strong id="noise">0</strong></div>
           <div><span>Visit satisfaction</span><strong><span id="liveSatisfaction">0</span>% <small>/ <span id="satisfactionGoal">70</span>%</small></strong></div>
         </div><p class="muted">Happy visits and satisfaction count when customers finish their visit. Water costs are included in earnings.</p></details>
-        <details id="eventHistory"><summary>Event history</summary><div id="eventLog"></div></details>
-        <details><summary>How to play</summary><p>Click a customer's coffee bubble to take an order. Drinks brew on their own, two at a time: click the machine to pick one up, then deliver it. Your staff pitch in; switch them between Counter and Floor. Click a dirty table to clean it. Select a waiting customer and give water to refill patience once for $2.</p></details>
+        <details id="eventHistory"><summary>Event history</summary><p id="gameMessage">The doors are open.</p><div id="eventLog"></div></details>
+        <details><summary>How to play</summary><p>Choose a waiting group, then a highlighted table or a table button. Drag any seated guest to a highlighted table to move their whole party. Time is held while dragging; release outside a table or press Escape to cancel. Moving costs 4 mood per guest, keeps their drinks, and leaves the old table dirty. You can also move parties using the menu under Other actions. Staff take orders, brew, and deliver automatically while working. Click guests to see their party’s drinks and relevant actions. The machine opens a list of named drinks. Pick one up to highlight its recipient, then click that guest or Deliver. Your tray holds up to three drinks. Load it at the counter, then click a highlighted table or its Serve button to deliver that table's drinks. Staff leave carried drinks alone. Cups, milk and pastries are finite: restock at the counter or pay extra for delivery. Specials change arrivals and visit length. Click a spill or warning marker to handle it yourself or delegate. Your physical tasks take time, while seating and decisions remain available. Unfinished supply orders are refunded at closing. Water refills one guest’s patience for $2; asking a social party for quiet reduces noise for 12 seconds. Bookings and requests open here too. Pause freezes timers while you decide.</p></details>
       </div>
     </div>
   </section>
@@ -133,6 +179,11 @@
       <p id="resultMessage" class="muted"></p>
       <div id="resultGoals" class="result-goals"></div>
       <div class="receipt-total"><span>Money for your next day</span><strong>$<span id="resultMoney">0</span></strong></div>
+      <section class="reviews" aria-labelledby="reviewsTitle">
+        <h2 id="reviewsTitle">What people said</h2>
+        <p id="resultRating" class="muted"></p>
+        <div id="resultReviews"></div>
+      </section>
       <details class="receipt-details"><summary>A closer look at your day</summary>
         <h2>Customer visits</h2><p id="resultCustomers"></p>
         <h2>Your choices & their effects</h2><p id="resultEffects"></p>
