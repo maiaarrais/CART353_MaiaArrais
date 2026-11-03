@@ -3329,7 +3329,7 @@ function updateFocusPanel() {
   updateProblemPopover();
   const scenePanel = document.getElementById("sceneActionPanel");
   const activeProblem = focus.kind === "problem" && problems.some(p => p.id === focus.id);
-  scenePanel.hidden = !running || focus.kind === "none" || focus.kind === "waiting" || activeProblem ||
+  scenePanel.hidden = !running || !!guestDrag?.active || focus.kind === "none" || focus.kind === "waiting" || activeProblem ||
     focus.kind === "problem" && coffeeServiceStatus().state !== "supplies";
   scenePanel.dataset.focus = focus.kind;
   const container = document.getElementById("focusControls");

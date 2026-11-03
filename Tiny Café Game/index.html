@@ -120,29 +120,29 @@
       <div class="room-workspace">
         <main id="cafeArea" class="cafe-area">
           <div id="sceneStage" class="scene-stage">
-          <canvas id="cafeCanvas" width="1000" height="542" aria-label="Drag a guest to another table to move their whole party. Click guests or tables for actions, or the machine for drink orders."></canvas>
-          <section id="problemPopover" class="problem-popover" hidden aria-labelledby="problemPopoverTitle"></section>
-      <div id="carryingBanner" class="carrying-banner" role="status" hidden></div>
-      <section id="sceneActionPanel" class="service-dock scene-action-panel" hidden aria-labelledby="orderStatus">
-        <div class="scene-panel-heading"><div class="service-instruction"><strong id="orderStatus">Select a guest, table, or request</strong><p id="serviceHelp">Staff handle orders and delivery. You manage the room.</p></div><button class="scene-panel-close" onclick="openFocus('none')" aria-label="Close actions">×</button></div>
-        <div id="focusControls" class="focus-controls"></div>
-        <div id="customerControls" class="customer-controls" hidden>
-          <div class="customer-summary"><span id="selectedCustomer">None</span><label for="selectedPatience" id="patienceLabel">Patience</label><progress id="selectedPatience" max="100" value="100">100%</progress></div>
-          <div id="partyOrderList" class="party-orders" aria-label="Party drink orders"></div>
-          <div class="table-actions main-actions">
-            <button id="helpDrinkButton" onclick="helpSelectedDrink()">☕ Help deliver</button>
-            <button id="priorityButton" onclick="customerAction('priority')">↑ Prioritize</button>
-            <button id="waterButton" onclick="offerWater()">💧 Water · $2</button>
-            <button id="calmButton" onclick="customerAction('calm')">🤫 Ask for quiet</button>
-          </div>
-          <p id="customerIssue"></p>
-          <details class="more-actions"><summary>Other actions & keyboard move</summary><div class="table-actions">
-            <label>Move party to <select id="moveTable"></select></label><button id="moveButton" onclick="moveSelectedParty()">Move · mood −4 each</button>
-            <button id="refundButton" onclick="customerAction('refund')">Refund · $3 / mood +25</button><button id="finishButton" onclick="customerAction('finish')">Finish visit · mood −8 each</button>
-          </div></details>
-          <span id="waterStatus" class="water-status" role="status"></span>
-        </div>
-      </section>
+            <canvas id="cafeCanvas" width="1000" height="542" aria-label="Drag a guest to another table to move their whole party. Click guests or tables for actions, or the machine for drink orders."></canvas>
+            <section id="problemPopover" class="problem-popover" hidden aria-labelledby="problemPopoverTitle"></section>
+            <div id="carryingBanner" class="carrying-banner" role="status" hidden></div>
+            <section id="sceneActionPanel" class="service-dock scene-action-panel" hidden aria-labelledby="orderStatus">
+              <div class="scene-panel-heading"><div class="service-instruction"><strong id="orderStatus">Select a guest, table, or request</strong><p id="serviceHelp">Staff handle orders and delivery. You manage the room.</p></div><button class="scene-panel-close" onclick="openFocus('none')" aria-label="Close actions">×</button></div>
+              <div id="focusControls" class="focus-controls"></div>
+              <div id="customerControls" class="customer-controls" hidden>
+                <div class="customer-summary"><span id="selectedCustomer">None</span><label for="selectedPatience" id="patienceLabel">Patience</label><progress id="selectedPatience" max="100" value="100">100%</progress></div>
+                <div id="partyOrderList" class="party-orders" aria-label="Party drink orders"></div>
+                <div class="table-actions main-actions">
+                  <button id="helpDrinkButton" onclick="helpSelectedDrink()">☕ Help deliver</button>
+                  <button id="priorityButton" onclick="customerAction('priority')">↑ Prioritize</button>
+                  <button id="waterButton" onclick="offerWater()">💧 Water · $2</button>
+                  <button id="calmButton" onclick="customerAction('calm')">🤫 Ask for quiet</button>
+                </div>
+                <p id="customerIssue"></p>
+                <details class="more-actions"><summary>Other actions & keyboard move</summary><div class="table-actions">
+                  <label>Move party to <select id="moveTable"></select></label><button id="moveButton" onclick="moveSelectedParty()">Move · mood −4 each</button>
+                  <button id="refundButton" onclick="customerAction('refund')">Refund · $3 / mood +25</button><button id="finishButton" onclick="customerAction('finish')">Finish visit · mood −8 each</button>
+                </div></details>
+                <span id="waterStatus" class="water-status" role="status"></span>
+              </div>
+            </section>
           </div>
           <p id="dragHint" class="drag-hint" role="status" hidden></p>
           <div id="roomInsights" class="room-insights" aria-label="Live table relationships"></div>
