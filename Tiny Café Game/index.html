@@ -27,7 +27,7 @@
         <button class="primary" onclick="showScreen('setup')">Prepare your café <span aria-hidden="true">→</span></button>
       </div>
     </main>
-    <p class="page-note">Set the atmosphere. Serve with care. See what grows.</p>
+    <p class="page-note">Manage your café, be ready to see the results.</p>
   </section>
 
   <section id="setup" class="screen" aria-labelledby="setupTitle">
@@ -36,55 +36,62 @@
       <span class="step-label">02 / Before opening · Day <span id="setupDay">1</span></span>
     </header>
     <div class="setup-heading">
-      <div><h1 id="setupTitle">Build your shop</h1></div>
+      <div><h1 id="setupTitle">Make room for a good day.</h1></div>
       <div class="budget-total"><span>Available to spend</span><strong>$<span id="budget">150</span></strong></div>
     </div>
     <main class="setup-body">
       <div class="setup-preview">
         <canvas id="setupCanvas" width="1000" height="542" aria-label="Live preview of your café and its furniture"></canvas>
         <div class="preview-legend">
-          <span><b id="previewTables">3</b> tables</span>
-          <span>Wi-Fi <b id="previewWifi">0</b>/3</span>
-          <span>Sound panels <b id="previewSound">0</b>/3</span>
+          <span>Click a table price tag to add seating</span><span hidden><b id="previewTables"></b><b id="previewWifi"></b><b id="previewSound"></b></span>
         </div>
+        <section class="shop-catalogue" aria-labelledby="shopTitle">
+          <div class="section-heading"><h2 id="shopTitle">Make it yours</h2><small>Click an item to buy</small></div>
+          <div class="shop shop-grid">
+            <button class="shop-card" data-upgrade="tables" data-cost="40" onclick="buyUpgrade('tables', 40)" aria-label="Buy an extra table for 40 dollars" title="More seats; more demand on your staff.">
+              <span class="shop-card-art"><canvas id="shopTableCanvas" width="240" height="164" aria-hidden="true"></canvas></span>
+              <span class="shop-card-caption"><span class="shop-card-name">Table</span><span id="tablesPrice" class="shop-card-price">$40</span></span>
+              <span class="shop-card-detail"><span id="tables">3</span>/6 tables · <span id="shopTableSeats">2 seats next</span></span>
+            </button>
+            <button class="shop-card" data-upgrade="wifi" data-cost="50" onclick="buyUpgrade('wifi', 50)" aria-label="Upgrade Wi-Fi for 50 dollars" title="Attracts students; longer visits and a greater chance of a second drink.">
+              <span class="shop-card-art shop-icon-art"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M10 25a34 34 0 0 1 44 0M18 34a22 22 0 0 1 28 0M26 43a10 10 0 0 1 12 0"/><circle cx="32" cy="51" r="2" fill="currentColor" stroke="none"/></svg></span>
+              <span class="shop-card-caption"><span class="shop-card-name">Wi-Fi</span><span id="wifiPrice" class="shop-card-price">$50</span></span>
+              <span class="shop-card-detail">Level <span id="wifi">0</span>/3 · longer visits</span>
+            </button>
+            <button class="shop-card" data-upgrade="sound" data-cost="45" onclick="buyUpgrade('sound', 45)" aria-label="Buy sound panels for 45 dollars" title="Reduces distraction, but also dampens the buzz between social guests.">
+              <span class="shop-card-art shop-icon-art"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 26h10l12-10v32L23 38H13zM44 25a13 13 0 0 1 0 14M51 19a22 22 0 0 1 0 26"/><path d="m12 51 40-40" stroke="var(--wood)" stroke-width="4"/></svg></span>
+              <span class="shop-card-caption"><span class="shop-card-name">Acoustics</span><span id="soundPrice" class="shop-card-price">$45</span></span>
+              <span class="shop-card-detail">Level <span id="sound">0</span>/3 · a quieter room</span>
+            </button>
+            <button id="hireButton" class="shop-card" onclick="hireStaff()" aria-label="Hire a barista for 60 dollars" title="Another pair of hands for the counter or floor.">
+              <span class="shop-card-art shop-icon-art"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M24 13v10l-9 10v23h34V33l-9-10V13zM24 13h16M24 23h16M25 37h14v9H25zM15 35 8 27M49 35l7-8"/></svg></span>
+              <span class="shop-card-caption"><span class="shop-card-name">Barista</span><span id="staffPrice" class="shop-card-price">$60</span></span>
+              <span class="shop-card-detail"><span id="staffCount">1</span>/3 staff · extra help</span>
+            </button>
+          </div>
+        </section>
       </div>
       <aside class="setup-sidebar" aria-label="Shop and café settings">
-        <div class="section-heading"><h2>Upgrades</h2></div>
-        <div class="shop">
-          <div class="item">
-            <div><h3>Extra table</h3><p>More seats.</p><small><span id="tables">3</span> of 6 tables</small></div>
-            <button data-upgrade="tables" data-cost="40" onclick="buyUpgrade('tables', 40)" aria-label="Buy an extra table for 40 dollars">$40</button>
-          </div>
-          <div class="item">
-            <div><h3>Better Wi-Fi</h3><p>Longer visits, more repeat orders.</p><small>Level <span id="wifi">0</span> of 3</small></div>
-            <button data-upgrade="wifi" data-cost="50" onclick="buyUpgrade('wifi', 50)" aria-label="Upgrade Wi-Fi for 50 dollars">$50</button>
-          </div>
-          <div class="item">
-            <div><h3>Sound panels</h3><p>Less noise, less social buzz.</p><small>Level <span id="sound">0</span> of 3</small></div>
-            <button data-upgrade="sound" data-cost="45" onclick="buyUpgrade('sound', 45)" aria-label="Buy sound panels for 45 dollars">$45</button>
-          </div>
-          <div class="item">
-            <div><h3>Hire a barista</h3><small><span id="staffCount">1</span> of 3 staff</small></div>
-            <button id="hireButton" onclick="hireStaff()" aria-label="Hire a barista for 60 dollars">$60</button>
-          </div>
-        </div>
         <div class="setup-settings">
-          <h2>Settings</h2>
+          <h2>Today’s atmosphere</h2>
           <label for="price">Coffee price <strong>$<span id="priceValue">5</span></strong></label>
           <input type="range" id="price" min="3" max="8" value="5">
-          <div id="priceImpact" class="price-outlook" aria-label="Estimated usual-menu espresso demand by customer type"></div>
-          <p class="tradeoff-note">Espresso demand · Students pay $1 less.</p>
+          <details class="shop-demand"><summary>Who will this price attract?</summary><div id="priceImpact" class="price-outlook" aria-label="Estimated usual-menu espresso demand by customer type"></div><p class="tradeoff-note">Students pay $1 less.</p></details>
           <label for="music">Music volume <strong><span id="musicValue">3</span>/10</strong></label>
           <input type="range" id="music" min="0" max="10" value="3">
         </div>
-        <section class="counter-prep" aria-labelledby="prepTitle">
-          <h2 id="prepTitle">Supplies</h2><p class="muted">Unused supplies carry over.</p>
-          <div id="setupSupplies"></div>
-          <h3>Today's special</h3>
+        <details class="shop-prep">
+          <summary><span>Supplies</span><small id="shopStockSummary"></small></summary>
+          <div class="counter-prep"><div id="setupSupplies"></div><p class="muted">Unused supplies carry over.</p></div>
+        </details>
+        <details class="shop-prep">
+          <summary><span>Today’s special</span><small id="shopSpecialSummary">Usual menu</small></summary>
+          <div class="counter-prep">
           <label for="specialKind">Offer</label><select id="specialKind" onchange="setDailySpecial()"><option value="none">Usual menu only</option><option value="quick">Express espresso</option><option value="pastry">Coffee + pastry</option></select>
           <div class="special-fields"><label for="specialPrice">Price ($)<input id="specialPrice" type="number" min="2" max="12" step="1" value="4" onchange="setDailySpecial()"></label><label for="specialLimit">Quantity<input id="specialLimit" type="number" min="1" max="10" step="1" value="5" onchange="setDailySpecial()"></label></div>
           <p id="specialDescription" class="muted"></p>
-        </section>
+          </div>
+        </details>
         <footer class="setup-actions">
           <p id="message" role="status"></p>
           <button class="primary" onclick="startDay()">Open the doors <span aria-hidden="true">→</span></button>
@@ -111,8 +118,32 @@
       </div>
       <div id="managerWork" class="manager-work" hidden><span id="managerTaskName"></span><progress id="managerTaskProgress" value="0" max="100" aria-label="Your task progress"></progress></div>
       <div class="room-workspace">
-        <main class="cafe-area">
+        <main id="cafeArea" class="cafe-area">
+          <div id="sceneStage" class="scene-stage">
           <canvas id="cafeCanvas" width="1000" height="542" aria-label="Drag a guest to another table to move their whole party. Click guests or tables for actions, or the machine for drink orders."></canvas>
+          <section id="problemPopover" class="problem-popover" hidden aria-labelledby="problemPopoverTitle"></section>
+      <div id="carryingBanner" class="carrying-banner" role="status" hidden></div>
+      <section id="sceneActionPanel" class="service-dock scene-action-panel" hidden aria-labelledby="orderStatus">
+        <div class="scene-panel-heading"><div class="service-instruction"><strong id="orderStatus">Select a guest, table, or request</strong><p id="serviceHelp">Staff handle orders and delivery. You manage the room.</p></div><button class="scene-panel-close" onclick="openFocus('none')" aria-label="Close actions">×</button></div>
+        <div id="focusControls" class="focus-controls"></div>
+        <div id="customerControls" class="customer-controls" hidden>
+          <div class="customer-summary"><span id="selectedCustomer">None</span><label for="selectedPatience" id="patienceLabel">Patience</label><progress id="selectedPatience" max="100" value="100">100%</progress></div>
+          <div id="partyOrderList" class="party-orders" aria-label="Party drink orders"></div>
+          <div class="table-actions main-actions">
+            <button id="helpDrinkButton" onclick="helpSelectedDrink()">☕ Help deliver</button>
+            <button id="priorityButton" onclick="customerAction('priority')">↑ Prioritize</button>
+            <button id="waterButton" onclick="offerWater()">💧 Water · $2</button>
+            <button id="calmButton" onclick="customerAction('calm')">🤫 Ask for quiet</button>
+          </div>
+          <p id="customerIssue"></p>
+          <details class="more-actions"><summary>Other actions & keyboard move</summary><div class="table-actions">
+            <label>Move party to <select id="moveTable"></select></label><button id="moveButton" onclick="moveSelectedParty()">Move · mood −4 each</button>
+            <button id="refundButton" onclick="customerAction('refund')">Refund · $3 / mood +25</button><button id="finishButton" onclick="customerAction('finish')">Finish visit · mood −8 each</button>
+          </div></details>
+          <span id="waterStatus" class="water-status" role="status"></span>
+        </div>
+      </section>
+          </div>
           <p id="dragHint" class="drag-hint" role="status" hidden></p>
           <div id="roomInsights" class="room-insights" aria-label="Live table relationships"></div>
           <div class="visual-legend" aria-label="Status key"><span>↔ Drag a guest to move their party</span><span>◷ Waiting</span><span>♨ Brewing</span><span>✓ Ready</span><span>♡ Served</span><span>◔ Patience ring</span></div>
@@ -133,27 +164,6 @@
           <section aria-label="Customer concerns"><h3>⚑ In the room</h3><div id="concernList"></div></section>
         </aside>
       </div>
-      <div id="carryingBanner" class="carrying-banner" role="status" hidden></div>
-      <section class="service-dock" aria-label="Selected guest or table">
-        <div class="service-instruction"><strong id="orderStatus">Select a guest, table, or request</strong><p id="serviceHelp">Staff handle orders and delivery. You manage the room.</p></div>
-        <div id="focusControls" class="focus-controls"></div>
-        <div id="customerControls" class="customer-controls" hidden>
-          <div class="customer-summary"><span id="selectedCustomer">None</span><label for="selectedPatience" id="patienceLabel">Patience</label><progress id="selectedPatience" max="100" value="100">100%</progress></div>
-          <div id="partyOrderList" class="party-orders" aria-label="Party drink orders"></div>
-          <div class="table-actions main-actions">
-            <button id="helpDrinkButton" onclick="helpSelectedDrink()">☕ Help deliver</button>
-            <button id="priorityButton" onclick="customerAction('priority')">↑ Prioritize</button>
-            <button id="waterButton" onclick="offerWater()">💧 Water · $2</button>
-            <button id="calmButton" onclick="customerAction('calm')">🤫 Ask for quiet</button>
-          </div>
-          <p id="customerIssue"></p>
-          <details class="more-actions"><summary>Other actions & keyboard move</summary><div class="table-actions">
-            <label>Move party to <select id="moveTable"></select></label><button id="moveButton" onclick="moveSelectedParty()">Move · mood −4 each</button>
-            <button id="refundButton" onclick="customerAction('refund')">Refund · $3 / mood +25</button><button id="finishButton" onclick="customerAction('finish')">Finish visit · mood −8 each</button>
-          </div></details>
-          <span id="waterStatus" class="water-status" role="status"></span>
-        </div>
-      </section>
       <p id="actionFeedback" class="action-feedback" role="status" aria-live="polite">Choose a waiting group to seat them.</p>
       <footer class="game-footer">
         <div class="music-control"><label for="liveMusic">♫ Music</label><input type="range" id="liveMusic" min="0" max="10" value="3"><output id="liveMusicValue" for="liveMusic">3</output></div>

@@ -173,7 +173,9 @@ function updateSetup() {
   document.getElementById("staffCount").textContent = cafe.staff.length;
   const hire = document.getElementById("hireButton");
   hire.disabled = cafe.staff.length >= 3 || cafe.budget < 60;
-  hire.textContent = cafe.staff.length >= 3 ? "Full" : "$60";
+  hire.dataset.state = cafe.staff.length >= 3 ? "full" : hire.disabled ? "unaffordable" : "available";
+  document.getElementById("staffPrice").textContent = cafe.staff.length >= 3 ? "Full" : "$60";
+  hire.setAttribute("aria-label", cafe.staff.length >= 3 ? "Staff limit reached" : cafe.budget < 60 ? "Hire a barista for 60 dollars; insufficient funds" : "Hire a barista for 60 dollars");
 
   ["tables", "wifi", "sound"].forEach(item => {
     document.getElementById(item).textContent = cafe[item];
@@ -189,7 +191,8 @@ function updateSetup() {
     const maximum = item === "tables" ? 6 : 3;
     const atMaximum = cafe[item] >= maximum;
     button.disabled = atMaximum || cafe.budget < Number(button.dataset.cost);
-    button.textContent = atMaximum ? "Full" : `$${button.dataset.cost}`;
+    document.getElementById(`${item}Price`).textContent = atMaximum ? "Full" : `$${button.dataset.cost}`;
+    button.dataset.state = atMaximum ? "full" : button.disabled ? "unaffordable" : "available";
   });
   document.getElementById("specialKind").value = cafe.special.kind;
   document.getElementById("specialPrice").value = cafe.special.price;
@@ -200,6 +203,10 @@ function updateSetup() {
     ? "Guests leave 3s after service."
     : cafe.special.kind === "pastry" ? "Uses 1 pastry · +5 mood · longer visits." : "";
   document.getElementById("setupSupplies").innerHTML = supplyMarkup(true);
+  document.getElementById("shopStockSummary").textContent = `${cafe.stock.cups} cups · ${cafe.stock.milk} milk · ${cafe.stock.pastries} pastries`;
+  document.getElementById("shopSpecialSummary").textContent = cafe.special.kind === "none" ? "Usual menu"
+    : `${cafe.special.kind === "quick" ? "Espresso" : "Coffee + pastry"} · $${cafe.special.price}`;
+  document.getElementById("shopTableSeats").textContent = cafe.tables < 6 ? `${tableArtwork(cafe.tables).chairs.length} seats next` : "All placed";
   updateTradeoffPreview();
   updateSetupPreview();
 }
@@ -711,6 +718,21 @@ function takeOrder(customer, by) {
   return true;
 }
 
+// Distinguish a broken machine from an order waiting for supplies.
+function coffeeServiceStatus() {
+  if (problems.some(p => p.kind === "machine")) {
+    return { state: "repair", label: "Machine stopped", detail: "Repair the coffee machine to resume brewing." };
+  }
+  const queued = tickets.filter(t => t.state === "queued" && needsDrink(findCustomer(t.id)));
+  if (queued.length && queued.every(t => stockBlock(t))) {
+    const missing = Object.keys(supplyPacks).filter(key => queued.some(t =>
+      stock[key] < (drinkRecipe(t)[key] || 0)));
+    return { state: "supplies", label: `Restock ${missing.join(" + ")}`,
+      detail: `Orders need ${missing.map(key => supplyPacks[key].name.toLowerCase()).join(" and ")}. Restock at the counter.` };
+  }
+  return { state: "ready", label: "Machine ready", detail: "Orders brew automatically when supplies are available." };
+}
+
 function startBrew() {
   if (problems.some(p => p.kind === "machine") || tickets.filter(t => t.state === "brewing").length >= slotCount) return false;
   const t = tickets.find(x => x.state === "queued" && !stockBlock(x));
@@ -882,7 +904,8 @@ function updateStaff(dt) {
         return true;
       },
       clean: () => {
-        const cleanable = dirtyTables.filter(t => !customers.some(c => c.table === t && stillInside(c)));
+        const cleanable = dirtyTables.filter(t => !customers.some(c => c.table === t && stillInside(c)) &&
+          !problems.some(p => p.kind === "spill" && p.table === t));
         if (!cleanable.length) return false;
         // Tables with a booking coming up get cleaned first.
         const booked = reservations.filter(r => ["booked", "blocked"].includes(r.state)).map(r => r.table);
@@ -893,7 +916,9 @@ function updateStaff(dt) {
       }
     };
     const job = (m.role === "floor" ? ["deliver", "clean", "order"] : ["order", "deliver", "clean"]).find(k => jobs[k]());
-    m.task = job ? { deliver: "☕ Delivering", clean: "🧽 Cleaning", order: "📝 Taking orders" }[job] : "Ready";
+    const service = coffeeServiceStatus();
+    m.task = job ? { deliver: "☕ Delivering", clean: "🧽 Cleaning", order: "📝 Taking orders" }[job]
+      : service.state !== "ready" ? service.label : "Ready";
     if (task) task.textContent = m.task;
   });
 }
@@ -1125,8 +1150,9 @@ function createProblem() {
     } else if (kind === "machine") {
       problem = { kind, title: "Coffee machine needs attention", detail: "Brewing has stopped. Ready drinks can still be served. Fix it yourself or take a barista off service." };
     } else {
-      const free = Array.from({length:cafe.tables},(_,t)=>t).filter(tableOpen);
-      const table = free.length ? pickOne(free) : Math.floor(Math.random() * cafe.tables);
+      const occupied = [...new Set(customers.filter(isSeated).map(c => c.table))];
+      if (!occupied.length) continue;
+      const table = pickOne(occupied);
       problem = { kind, table, title: `Spill at T${table + 1}`, detail: "The spill blocks new seating and bothers guests already at this table. Wipe it yourself or send someone." };
     }
     problems.push({ ...problem, id: ++operationNumber });
@@ -1151,7 +1177,7 @@ function handleProblem(id, delegate = false) {
     if (managerTask) { managerFeedback("Finish your current task or delegate this one."); return; }
     managerTask = { id: ++operationNumber, kind: "problem", problemId: id, time: 4, total: 4 };
     problem.assigned = "You";
-    managerFeedback("You are handling the problem for 4s. You can still make seating decisions.");
+    managerFeedback(problem.kind === "spill" ? "Cleaning the spill · 4s. You can still manage seating." : "You are handling the problem for 4s. You can still make seating decisions.");
   }
 }
 
@@ -1167,9 +1193,39 @@ function resolveProblem(id) {
     }
   }
   problems = problems.filter(p => p.id !== id);
+  if (problem.kind === "spill" && !customers.some(c => c.table === problem.table && stillInside(c))) {
+    dirtyTables = dirtyTables.filter(table => table !== problem.table);
+  }
+  // Release the repair task before resuming normal service.
+  if (managerTask?.problemId === id) managerTask = null;
+  let releasedStaff = false;
+  for (const worker of staff) {
+    if (worker.assignment?.problemId !== id) continue;
+    worker.assignment = null;
+    worker.cd = 0;
+    worker.task = "Ready";
+    releasedStaff = true;
+  }
+  if (releasedStaff) renderStaff();
   operationsStats.fixed++;
   story.push(`${problem.title}: resolved by ${problem.assigned || "the manager"}.`);
-  addEvent(`${problem.title}: sorted.`);
+  if (problem.kind === "machine") {
+    // Fill free slots immediately; existing brews keep their remaining time
+    // and already-consumed ingredients. New brews still require supplies.
+    while (startBrew()) { /* resume queued drinks */ }
+    const service = coffeeServiceStatus();
+    const message = service.state === "supplies"
+      ? `Machine repaired. ${service.detail}` : "Machine repaired. Brewing resumed.";
+    document.getElementById("actionFeedback").textContent = message;
+    addEvent(message, service.state === "supplies");
+  } else if (problem.kind === "spill") {
+    const message = `Spill cleaned at T${problem.table + 1}.`;
+    document.getElementById("actionFeedback").textContent = message;
+    addEvent(message);
+    renderBoard();
+  } else addEvent(`${problem.title}: sorted.`);
+  updateOrderStatus();
+  updateCustomerControls();
 }
 
 function updateOperations(dt) {
@@ -1191,9 +1247,10 @@ function updateOperations(dt) {
   deliveries = deliveries.filter(d => d.time > 0);
   for (const m of staff) {
     if (!m.assignment || m.rest > 0) continue;
-    m.assignment.time -= dt;
-    if (m.assignment.time <= 0 || !problems.some(p => p.id === m.assignment.problemId)) {
-      if (m.assignment.time <= 0) resolveProblem(m.assignment.problemId);
+    const assignment = m.assignment;
+    assignment.time -= dt;
+    if (assignment.time <= 0 || !problems.some(p => p.id === assignment.problemId)) {
+      if (assignment.time <= 0) resolveProblem(assignment.problemId);
       m.assignment = null; m.energy = Math.max(0, m.energy - 4); renderStaff();
     }
   }
@@ -1217,11 +1274,45 @@ function settleOperations() {
   staff.forEach(m => { m.assignment = null; });
 }
 
-function problemMarkup(problem) {
+function problemMarkup(problem, compact = false) {
   const owner = problem.assigned;
-  return `<div class="problem-card"><strong>${esc(problem.title)}</strong><p>${esc(problem.detail)}</p>
-    ${owner ? `<small>${esc(owner)} is handling it · <span id="problem-time-${problem.id}"></span></small>` :
-      `<div class="table-actions"><button onclick="handleProblem(${problem.id})" ${managerTask ? "disabled" : ""}>Handle it · 4s</button><button onclick="handleProblem(${problem.id},true)" ${staff.some(m=>m.rest<=0&&!m.assignment) ? "" : "disabled"}>Send staff · 7s</button></div>`}</div>`;
+  const action = problem.kind === "spill" ? "Clean spill" : problem.kind === "machine" ? "Repair machine" : "Fix Wi-Fi";
+  return `<div class="problem-card">${compact ? "" : `<strong>${esc(problem.title)}</strong><p>${esc(problem.detail)}</p>`}
+    ${owner ? `<small>${owner === "You" ? "You are" : `${esc(owner)} is`} ${problem.kind === "spill" ? "cleaning" : "handling it"} · <span id="problem-time-${problem.id}"></span></small>` :
+      `<div class="table-actions"><button onclick="handleProblem(${problem.id})" ${managerTask ? "disabled" : ""}>${action} · 4s</button><button onclick="handleProblem(${problem.id},true)" ${staff.some(m=>m.rest<=0&&!m.assignment) ? "" : "disabled"}>Send staff · 7s</button></div>`}</div>`;
+}
+
+function updateProblemPopover() {
+  const popover = document.getElementById("problemPopover");
+  const problem = running && focus.kind === "problem" && problems.find(p => p.id === focus.id);
+  popover.hidden = !problem;
+  if (!problem) {
+    popover.innerHTML = "";
+    popover.dataset.key = "";
+    return;
+  }
+  const key = JSON.stringify([problem.id, problem.assigned, !!managerTask,
+    staff.some(m => m.rest <= 0 && !m.assignment)]);
+  if (popover.dataset.key !== key) {
+    popover.dataset.key = key;
+    popover.innerHTML = `<div class="problem-popover-heading"><h3 id="problemPopoverTitle">${esc(problem.title)}</h3><button class="problem-close" onclick="openFocus('none')" aria-label="Close problem options">×</button></div>` + problemMarkup(problem, true);
+  }
+  const position = problemPosition(problem);
+  const room = document.getElementById("sceneStage").getBoundingClientRect();
+  const rect = canvas.getBoundingClientRect();
+  const x = rect.left - room.left + position.x / sceneSize.width * rect.width;
+  const y = rect.top - room.top + position.y / sceneSize.height * rect.height;
+  const height = popover.getBoundingClientRect().height;
+  popover.style.left = `${Math.max(8, Math.min(x - 140, room.width - 288))}px`;
+  popover.style.top = `${Math.max(8, Math.min(y + 22, room.height - height - 8))}px`;
+}
+
+function problemAtPoint(point) {
+  if (!point?.inside) return null;
+  return problems.find(p => {
+    const pos = problemPosition(p);
+    return Math.hypot(pos.x - point.x, pos.y - point.y) <= 24;
+  });
 }
 
 function counterMarkup() {
@@ -1236,11 +1327,16 @@ function renderOperations() {
   const shortages = Object.keys(stock).filter(key => stock[key] < 3);
   const label = `Counter · ${shortages.length ? shortages.map(k=>`${supplyPacks[k].name} ${stock[k]}`).join(" / ") : `${stock.cups} cups · ${stock.milk} milk`} · Tray ${carriedTickets().length}/${trayCapacity}`;
   const status = document.getElementById("counterStatus");
-  if (status.textContent !== label) status.textContent = label;
+  const service = coffeeServiceStatus();
+  const counterLabel = service.state === "ready" ? label : `${service.label} · Tray ${carriedTickets().length}/${trayCapacity}`;
+  status.dataset.service = service.state;
+  status.title = service.detail;
+  if (status.textContent !== counterLabel) status.textContent = counterLabel;
   const work = document.getElementById("managerWork");
   work.hidden = !managerTask;
   if (managerTask) {
-    const label = managerTask.kind === "restock" ? `Restocking ${supplyPacks[managerTask.resource].name.toLowerCase()}` : "Handling a café problem";
+    const label = managerTask.kind === "restock" ? `Restocking ${supplyPacks[managerTask.resource].name.toLowerCase()}`
+      : problems.find(p => p.id === managerTask.problemId)?.kind === "spill" ? "Cleaning spill" : "Handling a café problem";
     document.getElementById("managerTaskName").textContent = `${label} · ${Math.max(0,Math.ceil(managerTask.time))}s`;
     document.getElementById("managerTaskProgress").value = 100 * (1 - managerTask.time / managerTask.total);
   }
@@ -2031,7 +2127,9 @@ function cancelGuestDrag() {
 canvas.addEventListener("pointerdown", event => {
   if (!running || event.isPrimary === false || event.button !== 0) return;
   suppressCanvasClick = false;
-  const point = canvasPoint(event), customer = guestAtPoint(point);
+  const point = canvasPoint(event);
+  if (problemAtPoint(point)) return;
+  const customer = guestAtPoint(point);
   if (!customer) return;
   guestDrag = { pointerId: event.pointerId, customerId: customer.id,
     startX: event.clientX, startY: event.clientY, point, active: false, target: null };
@@ -2069,6 +2167,7 @@ canvas.addEventListener("pointercancel", () => {
 });
 canvas.addEventListener("lostpointercapture", () => { if (guestDrag) cancelGuestDrag(); });
 document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !guestDrag?.active && focus.kind !== "none") openFocus("none");
   if (event.key === "Escape" && guestDrag) {
     suppressCanvasClick = guestDrag.active;
     cancelGuestDrag();
@@ -2083,7 +2182,7 @@ canvas.addEventListener("click", event => {
   if (!point?.inside) return;
   const { x, y } = point;
 
-  const problem = problems.find(p => { const pos = problemPosition(p); return Math.hypot(pos.x - x, pos.y - y) < 17; });
+  const problem = problemAtPoint(point);
   if (problem) { openFocus("problem", problem.id); return; }
 
   if (x >= coffeeMachineArea.x &&
@@ -2229,10 +2328,9 @@ function drawSeatingGhosts(context, forecast, table, foreground) {
   for (const ghost of forecast.ghosts) {
     if (!!tableArtwork(table).chairs[ghost.seatIndex].foreground !== foreground) continue;
     drawCustomerBody(ghost, context);
-    context.strokeStyle = "#467080";
-    context.lineWidth = 2;
-    context.setLineDash([3, 4]);
-    context.beginPath(); context.arc(ghost.x, ghost.y, 23, 0, Math.PI * 2); context.stroke();
+    context.shadowColor = "#d9a441"; context.shadowBlur = 14;
+    drawCircle(ghost.x, ghost.y + 20, 20, "#d9a44133", context);
+    context.shadowBlur = 0;
   }
   context.restore();
 }
@@ -2248,6 +2346,133 @@ function updateRoomInsights() {
   const markup = html || '<span class="muted">Seat parties near each other to see who helps or distracts whom.</span>';
   if (container.dataset.key !== markup) { container.innerHTML = markup; container.dataset.key = markup; }
 }
+
+
+// --------------------
+// TABLE GLOW + SHOP SPOTS
+// --------------------
+
+function withAlpha(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+// A crisp floor marker stays readable against the painted wood.
+function drawTableGlow(context, table, artwork, color, strong) {
+  const rx = artwork.width / 2 + 30;
+  const ry = 47;
+  context.save();
+  context.beginPath();
+  context.ellipse(table.x, table.y + 52, rx, ry, 0, 0, Math.PI * 2);
+  context.fillStyle = withAlpha(color, strong ? 0.18 : 0.09);
+  context.fill();
+  context.strokeStyle = "#fffaf0";
+  context.lineWidth = strong ? 8 : 6;
+  context.stroke();
+  context.strokeStyle = color;
+  context.lineWidth = strong ? 4 : 2.5;
+  context.stroke();
+  context.restore();
+}
+
+const shopCosts = { tables: 40 };
+let shopHotspots = [], shopHover = null, shopFlash = null;
+
+function drawPill(context, x, y, text, state) {
+  context.save();
+  context.font = "600 13px -apple-system, Segoe UI, sans-serif";
+  const w = context.measureText(text).width + 52;
+  const h = 36;
+  const cx = Math.max(w / 2 + 8, Math.min(sceneSize.width - w / 2 - 8, x));
+  const left = cx - w / 2;
+  const top = y - h / 2;
+  const active = state === "hover";
+  const disabled = state === "disabled";
+  const accent = disabled ? "#766755" : "#59633d";
+
+  context.shadowColor = "rgba(61, 48, 37, 0.22)";
+  context.shadowBlur = 5;
+  context.shadowOffsetY = 2;
+  context.fillStyle = active ? "#59633d" : "#fffaf0";
+  context.beginPath();
+  context.roundRect(left, top, w, h, 8);
+  context.fill();
+  context.shadowColor = "transparent";
+  context.strokeStyle = active ? "#fffaf0" : accent;
+  context.lineWidth = active ? 2.5 : 1.5;
+  context.stroke();
+
+  drawCircle(left + 18, y, 10, active ? "#fffaf0" : accent, context);
+  context.fillStyle = active ? "#59633d" : "#fffaf0";
+  context.font = "600 16px sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(disabled ? "−" : "+", left + 18, y + 1);
+  context.font = "600 13px -apple-system, Segoe UI, sans-serif";
+  context.fillStyle = active ? "#fffaf0" : disabled ? "#766755" : "#3d3025";
+  context.textAlign = "left";
+  context.fillText(text, left + 35, y + 1);
+  context.restore();
+  return { x: left, y: top, w, h };
+}
+
+// Setup only: named purchase tags identify the next available upgrades.
+function drawShopSpots(context) {
+  shopHotspots = [];
+  const labels = { tables: "Table" };
+  const add = (kind, x, y, w, h, tagY, ghost) => {
+    const cost = shopCosts[kind];
+    const affordable = cafe.budget >= cost;
+    const hover = shopHover === kind;
+    context.save();
+    context.globalAlpha = hover ? 0.9 : 0.55;
+    ghost();
+    context.restore();
+    const tag = drawPill(context, x, tagY, `${labels[kind]} · $${cost}`, !affordable ? "disabled" : hover ? "hover" : "idle");
+    shopHotspots.push({ kind, cost, x: x - w / 2, y: y - h / 2, w, h, tag });
+  };
+  if (cafe.tables < 6) {
+    const t = tablePositions[cafe.tables], art = tableArtwork(cafe.tables);
+    drawTableGlow(context, t, art, "#59633d", shopHover === "tables");
+    add("tables", t.x, t.y + 40, art.width, 110, t.y + 40, () => drawAsset(art.name, t.x - art.width / 2, t.y - 12, art.width, context));
+  }
+  if (shopFlash && performance.now() < shopFlash.until) {
+    context.save(); context.font = "600 20px Georgia, serif"; context.textAlign = "center";
+    context.fillStyle = "#fffaf0"; context.strokeStyle = "rgba(61,48,37,.7)"; context.lineWidth = 4;
+    context.strokeText(shopFlash.text, shopFlash.x, shopFlash.y); context.fillText(shopFlash.text, shopFlash.x, shopFlash.y);
+    context.restore();
+  }
+}
+
+function shopPoint(event) {
+  const r = event.currentTarget.getBoundingClientRect();
+  return { x: (event.clientX - r.left) * sceneSize.width / r.width, y: (event.clientY - r.top) * sceneSize.height / r.height };
+}
+function shopHit(p) {
+  const contains = bounds => p.x >= bounds.x && p.x <= bounds.x + bounds.w &&
+    p.y >= bounds.y && p.y <= bounds.y + bounds.h;
+  // Tags take priority when their edges overlap a nearby object's hit area.
+  return shopHotspots.find(h => h.tag && contains(h.tag)) || shopHotspots.find(contains);
+}
+
+const setupCanvasEl = document.getElementById("setupCanvas");
+setupCanvasEl.addEventListener("pointermove", event => {
+  const hit = shopHit(shopPoint(event));
+  const next = hit ? hit.kind : null;
+  setupCanvasEl.style.cursor = hit ? "pointer" : "default";
+  if (next !== shopHover) { shopHover = next; updateSetupPreview(); }
+});
+setupCanvasEl.addEventListener("pointerleave", () => { shopHover = null; updateSetupPreview(); });
+setupCanvasEl.addEventListener("click", event => {
+  const hit = shopHit(shopPoint(event));
+  if (!hit) return;
+  const before = cafe.budget;
+  buyUpgrade(hit.kind, hit.cost);
+  const bought = cafe.budget < before;
+  shopFlash = { text: bought ? `\u2212$${hit.cost}` : "Not enough money", x: hit.x + hit.w / 2, y: hit.y - 8, until: performance.now() + 1400 };
+  updateSetupPreview();
+  setTimeout(updateSetupPreview, 1450);
+});
 
 function drawCafe(target = canvas, preview = false) {
   const context = prepareSceneCanvas(target);
@@ -2283,12 +2508,9 @@ function drawCafe(target = canvas, preview = false) {
     const dragHover = guestDrag?.active && guestDrag.target === index;
     if (trayTarget || party && availableTables(party.size).includes(index) || focus.kind === "table" && focus.id === index || destination || dragHover) {
       const forecast = party && seatingForecast(party, index);
-      context.strokeStyle = forecast?.tone === "risk" ? "#a55b3e" : forecast?.tone === "good" ? "#687946" : "#467080";
-      if (moving.length) context.strokeStyle = dragHover && !destination && index !== moving[0].table ? "#a55b3e" : "#687946";
-      context.lineWidth = previewTable === index || dragHover ? 4 : 2;
-      context.setLineDash(party ? [8, 5] : []);
-      context.strokeRect(table.x - artwork.width / 2 - 12, table.y - 25, artwork.width + 24, 118);
-      context.setLineDash([]);
+      let tone = forecast?.tone === "risk" ? "#a55b3e" : forecast?.tone === "good" ? "#687946" : "#d9a441";
+      if (moving.length) tone = dragHover && !destination && index !== moving[0].table ? "#a55b3e" : "#687946";
+      drawTableGlow(context, table, artwork, tone, previewTable === index || dragHover);
     }
     // Round tables have opposing side chairs. Rectangles have two per long
     // edge, with front chairs drawn after the tabletop to preserve their backs.
@@ -2333,6 +2555,8 @@ function drawCafe(target = canvas, preview = false) {
     }
   }
 
+  if (preview) drawShopSpots(context);
+
   if (!preview) {
     context.fillStyle = currentPhase().tint;
     context.fillRect(0, 0, sceneSize.width, sceneSize.height);
@@ -2354,9 +2578,31 @@ assetsReady.then(() => {
   updateSetupPreview();
 });
 
+// Reuse the scene's cropped furniture artwork in the clickable shop card.
+function drawShopTable() {
+  const target = document.getElementById("shopTableCanvas");
+  if (!target || !artworkLoaded) return;
+  const ratio = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+  target.width = Math.round(240 * ratio);
+  target.height = Math.round(164 * ratio);
+  const context = target.getContext("2d");
+  context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  context.clearRect(0, 0, 240, 164);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  const art = tableArtwork(Math.min(cafe.tables, 5));
+  const table = { x: 120, y: 52 };
+  for (const chair of art.chairs.filter(c => !c.foreground)) drawChair(table, chair, context);
+  drawAsset(art.name, table.x - art.width / 2, table.y - 12, art.width, context);
+  for (const chair of art.chairs.filter(c => c.foreground)) drawChair(table, chair, context);
+}
+
 function updateSetupPreview() {
   const preview = document.getElementById("setupCanvas");
-  if (preview && artworkLoaded) drawCafe(preview, true);
+  if (preview && artworkLoaded) {
+    drawCafe(preview, true);
+    drawShopTable();
+  }
   for (const key of ["tables", "wifi", "sound"]) {
     const label = document.getElementById(`preview${key[0].toUpperCase()}${key.slice(1)}`);
     if (label) label.textContent = cafe[key];
@@ -3014,7 +3260,10 @@ function openFocus(kind, id = null) {
   if (!running) return;
   const changed = focus.kind !== kind || focus.id !== id;
   focus = { kind, id };
-  if (changed) previewTable = null;
+  if (changed) {
+    previewTable = null;
+    document.getElementById("sceneActionPanel").scrollTop = 0;
+  }
   selectedCustomer = kind === "customer" ? id : null;
   if (changed) document.querySelector(".more-actions").open = false;
   document.getElementById("focusControls").dataset.key = "";
@@ -3063,8 +3312,10 @@ function renderPartyOrders(customer) {
 }
 
 function cleanTable(table) {
-  if (managerTask) { managerFeedback("Finish your current task before cleaning."); return; }
   if (!running || table < 0 || table >= cafe.tables) return;
+  const spill = problems.find(p => p.kind === "spill" && p.table === table);
+  if (spill) { openFocus("problem", spill.id); return; }
+  if (managerTask) { managerFeedback("Finish your current task before cleaning."); return; }
   if (customers.some(c => c.table === table && stillInside(c))) {
     managerFeedback(`T${table + 1} is occupied. Move the party before cleaning.`);
     return;
@@ -3075,6 +3326,12 @@ function cleanTable(table) {
 }
 
 function updateFocusPanel() {
+  updateProblemPopover();
+  const scenePanel = document.getElementById("sceneActionPanel");
+  const activeProblem = focus.kind === "problem" && problems.some(p => p.id === focus.id);
+  scenePanel.hidden = !running || focus.kind === "none" || focus.kind === "waiting" || activeProblem ||
+    focus.kind === "problem" && coffeeServiceStatus().state !== "supplies";
+  scenePanel.dataset.focus = focus.kind;
   const container = document.getElementById("focusControls");
   const title = document.getElementById("orderStatus");
   const detail = document.getElementById("serviceHelp");
@@ -3112,7 +3369,7 @@ function updateFocusPanel() {
   }
   if (focus.kind === "machine") {
     title.textContent = "The counter";
-    detail.textContent = "Restock supplies, load your tray, or handle equipment trouble. Stock and tray actions use this counter.";
+    detail.textContent = "Supplies, ready drinks & your tray.";
     html = counterMarkup() + '<section class="counter-orders"><h3>Drink orders</h3>' + (tickets.map(t => {
       const c = findCustomer(t.id);
       if (!c) return "";
@@ -3122,9 +3379,12 @@ function updateFocusPanel() {
   }
   if (focus.kind === "problem") {
     const problem = problems.find(p=>p.id===focus.id);
+    const service = coffeeServiceStatus();
     title.textContent = problem ? problem.title : "Problem resolved";
-    detail.textContent = problem ? "Handle it yourself, or take a staff member away from service." : "The café is running a little more smoothly.";
-    if(problem) html=problemMarkup(problem);
+    detail.textContent = problem ? "Handle it yourself, or take a staff member away from service."
+      : service.state === "supplies" ? service.detail : "The café is running a little more smoothly.";
+    if (problem) detail.textContent = problem.assigned ? `${problem.assigned} is handling it.` : "Choose an action beside the warning in the room.";
+    else if (service.state === "supplies") html = `<button onclick="openFocus('machine')">Restock supplies</button>`;
   }
   if (focus.kind === "waiting") {
     const p = waitingParties.find(p => p.id === focus.id);

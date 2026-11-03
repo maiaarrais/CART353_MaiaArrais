@@ -452,10 +452,16 @@ input[type="range"] {
 
 .game-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 24px;
+  gap: 12px 24px;
   align-items: center;
   padding: 20px 0 16px;
+}
+
+.game-heading {
+  flex: 1 1 220px;
+  min-width: 0;
 }
 
 .game-heading .wordmark {
@@ -757,9 +763,10 @@ summary:hover {
 
 .goal-line {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: baseline;
-  gap: 15px;
+  gap: 6px 15px;
 }
 
 .goal-line strong {
@@ -784,6 +791,7 @@ summary:hover {
 
 .receipt-total {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 20px;
@@ -866,18 +874,30 @@ summary:hover {
 
 .staff {
   display: grid;
-  grid-template-columns: auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  flex: 0 1 220px;
+  min-width: 0;
   align-items: center;
-  gap: 2px 10px;
+  gap: 4px 12px;
   font-size: 12px;
 }
 
+.staff > b {
+  grid-column: 1;
+  grid-row: 1;
+}
+
 .staff small {
+  grid-column: 1;
+  grid-row: 2;
+  overflow-wrap: break-word;
   color: var(--muted);
 }
 
 .staff button {
-  padding: 4px 10px;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  padding: 6px 10px;
   font-size: 11px;
 }
 
@@ -1140,6 +1160,7 @@ summary:hover {
   }
 
   .game-heading {
+    flex-basis: 100%;
     width: 100%;
   }
 
@@ -1243,7 +1264,13 @@ select {
 }
 
 .manager-toolbar button {
+  max-width: 100%;
   padding: 7px 12px;
+}
+
+#counterStatus {
+  text-align: left;
+  overflow-wrap: break-word;
 }
 
 .manager-toolbar label {
@@ -1300,7 +1327,7 @@ select {
   margin: 0 0 5px;
 }
 
-.attention-panel section + section {
+.attention-panel > section:not([hidden]) ~ section:not([hidden]) {
   border-top: 1px solid var(--line);
   margin-top: 12px;
   padding-top: 12px;
@@ -1320,6 +1347,8 @@ select {
 .attention-item strong {
   display: block;
   font-weight: 500;
+  line-height: 1.45;
+  overflow-wrap: break-word;
 }
 
 .attention-item small {
@@ -1517,6 +1546,8 @@ select {
 
 .drink-row {
   flex: 1 1 220px;
+  min-width: 0;
+  flex-wrap: wrap;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1524,6 +1555,16 @@ select {
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 7px;
+}
+
+.drink-row > span {
+  flex: 1 1 160px;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.drink-row > button {
+  flex-shrink: 0;
 }
 
 .drink-row b {
@@ -1566,7 +1607,7 @@ select {
     margin-bottom: 0;
   }
 
-  .attention-panel section + section {
+  .attention-panel > section:not([hidden]) ~ section:not([hidden]) {
     border: 0;
     margin: 0;
     padding: 0;
@@ -1600,6 +1641,14 @@ select {
 
   .table-actions label {
     flex-wrap: wrap;
+  }
+
+  .staff {
+    flex-basis: 100%;
+  }
+
+  .goal-line > span {
+    flex-basis: 100%;
   }
 }
 
@@ -1898,6 +1947,7 @@ select {
 .supply-row {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
   gap: 8px 12px;
   padding: 12px 0;
@@ -1945,6 +1995,12 @@ select {
   width: 100%;
 }
 
+.setup-preview,
+.setup-sidebar,
+.counter-layout > * {
+  min-width: 0;
+}
+
 .counter-layout h3,
 .counter-orders h3 {
   font-size: 20px;
@@ -1990,6 +2046,8 @@ select {
 }
 
 .manager-work progress {
+  flex: 0 1 140px;
+  max-width: 100%;
   width: 140px;
   margin: 0;
 }
@@ -2064,4 +2122,393 @@ select {
   line-height: 1.6;
   color: var(--muted);
   margin: 10px 0 16px;
+}
+
+/* Shop: the café is the store. Quieter sidebar, soft depth on the room. */
+#setupCanvas { cursor: default; box-shadow: 0 18px 40px #49362622; }
+.item { padding: 12px 0; }
+.item h3 { font-size: 17px; margin: 0 0 2px; }
+
+/* Visual shop: artwork first, preparation details on demand. */
+.shop-catalogue {
+  margin-top: 24px;
+}
+
+.shop-catalogue .section-heading {
+  margin-bottom: 14px;
+}
+
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.shop-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 12px;
+  text-align: left;
+  font-weight: 400;
+  background: var(--cream);
+  box-shadow: 0 3px 10px #49362608;
+}
+
+.shop-card:hover:not(:disabled),
+.shop-card:focus-visible {
+  border-color: var(--olive);
+  background: #f4f3e8;
+  box-shadow: 0 5px 14px #49362612;
+}
+
+.shop-card:disabled {
+  opacity: 0.65;
+}
+
+.shop-card[data-state="full"] {
+  background: var(--olive-light);
+}
+
+.shop-card-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 116px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #eee5d6;
+  pointer-events: none;
+}
+
+#shopTableCanvas {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  object-fit: contain;
+}
+
+.shop-icon-art {
+  position: relative;
+  color: var(--olive);
+}
+
+.shop-icon-art::before {
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  border: 1px solid #d6c8ae;
+  border-radius: 50%;
+  background: #f7f0e3;
+  content: "";
+}
+
+.shop-icon-art svg {
+  position: relative;
+  width: 56px;
+  height: 56px;
+}
+
+.shop-card-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+}
+
+.shop-card-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.shop-card-price {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--olive-light);
+  color: var(--olive);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.shop-card-detail {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.setup-sidebar .setup-settings {
+  margin-top: 0;
+}
+
+.shop-demand summary {
+  padding: 8px 0 0;
+  font-size: 11px;
+}
+
+.shop-demand .tradeoff-note {
+  margin-bottom: 0;
+}
+
+.shop-prep {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.shop-prep > summary {
+  position: relative;
+  padding: 16px 20px 0 0;
+  list-style: none;
+}
+
+.shop-prep > summary::-webkit-details-marker {
+  display: none;
+}
+
+.shop-prep > summary::after {
+  position: absolute;
+  top: 16px;
+  right: 0;
+  color: var(--olive);
+  content: "+";
+}
+
+.shop-prep[open] > summary::after {
+  content: "−";
+}
+
+.shop-prep > summary > span {
+  display: block;
+  color: var(--ink);
+  font: 20px Georgia, serif;
+}
+
+.shop-prep > summary > small {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+.shop-prep .counter-prep {
+  margin-top: 12px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.shop-prep .counter-prep > label:first-child {
+  margin-top: 0;
+}
+
+@media (max-width: 1000px) {
+  .shop-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .shop-catalogue {
+    margin-top: 18px;
+  }
+
+  .shop-catalogue .section-heading {
+    flex-wrap: wrap;
+  }
+
+  .shop-card-art {
+    height: 128px;
+  }
+}
+
+/* A repaired machine can still need supplies; make that reason visible. */
+#counterStatus[data-service="supplies"],
+#counterStatus[data-service="repair"] {
+  color: var(--rust);
+  border-color: var(--rust);
+  background: #fff1e3;
+}
+
+/* Warning actions stay beside the problem instead of below the room. */
+.cafe-area {
+  position: relative;
+}
+
+.problem-popover {
+  position: absolute;
+  z-index: 5;
+  width: 280px;
+  max-width: calc(100% - 16px);
+  padding: 14px;
+  border: 1px solid var(--wood);
+  border-radius: 12px;
+  background: var(--cream);
+  box-shadow: 0 8px 28px #3d30252b;
+}
+
+.problem-popover-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.problem-popover-heading h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.problem-close {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border: 0;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.problem-popover .problem-card {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.problem-popover .table-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+}
+
+.problem-popover .table-actions button {
+  min-height: 44px;
+  padding: 8px;
+  font-size: 12px;
+}
+
+.problem-popover .table-actions button:first-child {
+  background: var(--olive);
+  color: var(--cream);
+  border-color: var(--olive);
+}
+
+/* Selected actions live inside the café instead of below the game. */
+.scene-stage {
+  position: relative;
+  width: 100%;
+  isolation: isolate;
+}
+
+.scene-stage .scene-action-panel {
+  position: absolute;
+  z-index: 4;
+  top: 12px;
+  right: 12px;
+  width: 370px;
+  max-width: calc(100% - 24px);
+  max-height: calc(100% - 24px);
+  min-height: 0;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  border: 1px solid var(--wood);
+  border-radius: 12px;
+  background: var(--cream);
+  box-shadow: 0 8px 28px #3d30252b;
+}
+
+.scene-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.scene-panel-heading .service-instruction {
+  min-width: 0;
+}
+
+.scene-panel-heading .service-instruction strong {
+  font-size: 20px;
+}
+
+.scene-panel-heading .service-instruction p {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.scene-panel-close {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border: 0;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.scene-action-panel .focus-controls {
+  align-items: stretch;
+}
+
+.scene-action-panel .counter-layout {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.scene-action-panel .counter-layout h3,
+.scene-action-panel .counter-orders h3 {
+  font-size: 17px;
+}
+
+.scene-action-panel .supply-row {
+  gap: 8px;
+  padding: 10px 0;
+}
+
+.scene-action-panel .table-actions {
+  gap: 8px;
+}
+
+.scene-action-panel .party-orders {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.scene-action-panel .party-order {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.scene-stage .carrying-banner {
+  position: absolute;
+  z-index: 3;
+  bottom: 12px;
+  left: 12px;
+  width: 260px;
+  max-width: calc(100% - 24px);
+  max-height: 42%;
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  box-shadow: 0 4px 16px #3d30251a;
+  font-size: 12px;
+}
+
+.scene-stage .carrying-banner > span {
+  font-size: 11px;
+}
+
+@media (max-width: 440px) {
+  .scene-stage .scene-action-panel {
+    top: 8px;
+    right: 8px;
+    max-width: calc(100% - 16px);
+    max-height: calc(100% - 16px);
+    padding: 12px;
+  }
 }
