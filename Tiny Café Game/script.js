@@ -180,7 +180,16 @@ const missions = [
 ];
 
 function getMission() {
-  return missions[Math.min(cafe.unlocked, missions.length - 1)];
+  const base = missions[Math.min(cafe.unlocked, missions.length - 1)];
+  // Upgrades persist, so later days need more than the opening-day targets.
+  // Keep the first three days unchanged, then raise targets every three days.
+  const tier = Math.max(0, Math.floor(((Number(cafe.day) || 1) - 1) / 3));
+  return {
+    ...base,
+    sales: Math.min(90, base.sales + tier * 10),
+    happy: Math.min(10, base.happy + tier),
+    satisfaction: Math.min(85, base.satisfaction + tier)
+  };
 }
 
 function showMission() {
@@ -197,7 +206,8 @@ function showMission() {
     <li><strong>${mission.happy}</strong><span>happy completed visits</span></li>
   `;
 
-  document.getElementById("missionHint").textContent = mission.hint;
+  document.getElementById("missionHint").textContent =
+    `${mission.hint}${cafe.day > 3 ? " Targets rise every three days." : ""}`;
 
   const trend = getTrend();
   document.getElementById("trendTitle").textContent = trend.title;
