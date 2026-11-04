@@ -2668,3 +2668,207 @@ select {
   font-size: 13px;
   line-height: 1.5;
 }
+
+/* Run lives stay in the header, away from the café and its supply counts. */
+.header-status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 18px;
+}
+
+.game-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.life-meter {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.life-heart {
+  display: block;
+  width: 22px;
+  height: 25px;
+  overflow: visible;
+  color: #a76149;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  transform-origin: center;
+}
+
+.life-heart.is-filled {
+  fill: currentColor;
+}
+
+.life-heart.is-empty {
+  fill: none;
+  color: var(--muted);
+  opacity: 0.25;
+}
+
+.life-meter.is-critical .life-heart.is-filled {
+  color: var(--rust);
+  animation: last-heart 2s ease-in-out infinite;
+}
+
+.life-heart.is-restored {
+  animation: heart-restored 0.8s ease-out;
+}
+
+.life-heart.is-lost {
+  animation: heart-lost 0.7s ease-out;
+}
+
+@keyframes last-heart {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 0.65;
+  }
+}
+
+@keyframes heart-restored {
+  0% {
+    transform: scale(1.25);
+    color: var(--olive);
+  }
+  100% {
+    transform: scale(1);
+    color: #a76149;
+  }
+}
+
+@keyframes heart-lost {
+  0% {
+    fill: #a76149;
+    opacity: 1;
+  }
+  100% {
+    fill: none;
+    opacity: 0.25;
+  }
+}
+
+.restart-paper {
+  max-width: 850px;
+  margin: 0 auto;
+  padding: 36px clamp(20px, 4vw, 44px);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--cream);
+  text-align: center;
+}
+
+.restart-paper > p:not(.eyebrow) {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.keepsake-choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 26px 0;
+}
+
+.keepsake-choices[data-count="2"],
+.keepsake-choices[data-count="4"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.keepsake-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 20px 14px;
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.keepsake-card:only-child {
+  grid-column: 1 / -1;
+  justify-self: center;
+  width: min(100%, 280px);
+}
+
+.keepsake-card:hover,
+.keepsake-card:focus-visible {
+  border-color: var(--olive);
+  background: var(--olive-light);
+}
+
+.keepsake-art {
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--cream);
+  color: var(--olive);
+}
+
+.keepsake-art svg {
+  width: 52px;
+  height: 52px;
+}
+
+.keepsake-card small {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.restart-paper .restart-note {
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .header-status {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+  }
+
+  .game-header-right {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .game-header-right .life-meter {
+    align-self: flex-end;
+  }
+}
+
+@media (max-width: 440px) {
+  .life-heart {
+    width: 18px;
+    height: 21px;
+  }
+
+  .keepsake-choices,
+  .keepsake-choices[data-count="2"],
+  .keepsake-choices[data-count="4"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .life-meter .life-heart {
+    animation: none;
+  }
+}

@@ -10,7 +10,7 @@
   <section id="scenario" class="screen active" aria-labelledby="missionTitle">
     <header class="page-header">
       <span class="wordmark">Little Café<span class="wordmark-dot">.</span></span>
-      <span class="step-label">01 / A new day</span>
+      <div class="header-status"><span class="step-label">01 / A new day</span><div id="scenarioLives" class="life-meter" role="img" aria-label="5 of 5 lives remaining"></div></div>
     </header>
     <main class="briefing-layout">
       <div class="welcome-art">
@@ -33,7 +33,7 @@
   <section id="setup" class="screen" aria-labelledby="setupTitle">
     <header class="page-header">
       <span class="wordmark">Little Café<span class="wordmark-dot">.</span></span>
-      <span class="step-label">02 / Before opening · Day <span id="setupDay">1</span></span>
+      <div class="header-status"><span class="step-label">02 / Before opening · Day <span id="setupDay">1</span></span><div id="setupLives" class="life-meter" role="img" aria-label="5 of 5 lives remaining"></div></div>
     </header>
     <div class="setup-heading">
       <div><h1 id="setupTitle">Make room for a good day.</h1></div>
@@ -104,10 +104,12 @@
     <div class="game-layout">
       <header class="game-header">
         <div class="game-heading"><span class="wordmark">Little Café<span class="wordmark-dot">.</span></span><p id="activeMission"></p><p id="phaseLine"><b id="phaseName"></b> · <span id="trendName"></span></p></div>
+        <div class="game-header-right"><div id="playLives" class="life-meter" role="img" aria-label="5 of 5 lives remaining"></div>
         <div class="game-stats" aria-label="Today's progress">
           <div class="time-stat"><span>Time left</span><strong><span id="time">60</span><small>s</small></strong></div>
           <div><span>Earnings</span><strong>$<span id="sales">0</span><small> / $<span id="salesGoal">20</span></small></strong></div>
           <div><span>Happy visits</span><strong><span id="happy">0</span><small> / <span id="happyGoal">3</span></small></strong></div>
+        </div>
         </div>
       </header>
       <div class="manager-toolbar">
@@ -184,13 +186,14 @@
           <div><span>Visit satisfaction</span><strong><span id="liveSatisfaction">0</span>% <small>/ <span id="satisfactionGoal">70</span>%</small></strong></div>
         </div><p class="muted">Happy visits and satisfaction count when customers finish their visit. Water costs are included in earnings.</p></details>
         <details id="eventHistory"><summary>Event history</summary><p id="gameMessage">The doors are open.</p><div id="eventLog"></div></details>
-        <details><summary>How to play</summary><p>Room symbols: brief hearts or study marks show helpful neighbours; exclamation marks show distraction. Bright connections and signed mood segments appear when an effect starts, then fade. Hover or focus a seating option to preview a named consequence. Small filling cups show brewing; checks mark ready drinks. Patience rings appear when a guest is selected or needs attention. Olive links mean good company; rust links mean distraction. Warm floor shading indicates noise. Bookmarks mark reserved tables. A ring and countdown beside a warning show cleaning or repair progress.</p><p>Choose a waiting group, then a highlighted table or a table button. Drag any seated guest to a highlighted table to move their whole party. Time is held while dragging; release outside a table or press Escape to cancel. Moving costs 4 mood per guest, keeps their drinks, and leaves the old table dirty. You can also move parties using the menu under Other actions. Staff take orders, brew, and deliver automatically while working. Hover or select a table to see its occupancy. Click guests to see their party’s drinks and relevant actions. The machine opens the counter: use Supplies to restock, Tray to load or deliver, Special to manage the offer, and Orders to see named drinks. Pick up a ready order to highlight its recipient, then click that guest or Deliver. Your tray holds up to three drinks. Load it at the counter, then click a highlighted table or its Serve button to deliver that table's drinks. Staff leave carried drinks alone. Cups, milk and pastries are finite: restock at the counter or pay extra for delivery. Specials change arrivals and visit length. Student visits last at most 20 seconds after their first drink. Content students may ask for one more tea or espresso; Wi-Fi makes this more likely. Follow-up drinks keep the original departure time. Click a spill or warning marker to handle it yourself or delegate. Your physical tasks take time, while seating and decisions remain available. Unfinished supply orders are refunded at closing. Water refills one guest’s patience for $2; asking a social party for quiet reduces noise for 12 seconds. Bookings and requests open here too. Pause freezes timers while you decide.</p></details>
+        <details><summary>How to play</summary><p>Your five heart icons are lives. Meet all three mission goals to restore one. Miss two or three goals to lose one; missing just one leaves lives unchanged. At zero, choose one keepsake and restart on Day 1.</p><p>Room symbols: brief hearts or study marks show helpful neighbours; exclamation marks show distraction. Bright connections and signed mood segments appear when an effect starts, then fade. Hover or focus a seating option to preview a named consequence. Small filling cups show brewing; checks mark ready drinks. Patience rings appear when a guest is selected or needs attention. Olive links mean good company; rust links mean distraction. Warm floor shading indicates noise. Bookmarks mark reserved tables. A ring and countdown beside a warning show cleaning or repair progress.</p><p>Choose a waiting group, then a highlighted table or a table button. Drag any seated guest to a highlighted table to move their whole party. Time is held while dragging; release outside a table or press Escape to cancel. Moving costs 4 mood per guest, keeps their drinks, and leaves the old table dirty. You can also move parties using the menu under Other actions. Staff take orders, brew, and deliver automatically while working. Hover or select a table to see its occupancy. Click guests to see their party’s drinks and relevant actions. The machine opens the counter: use Supplies to restock, Tray to load or deliver, Special to manage the offer, and Orders to see named drinks. Pick up a ready order to highlight its recipient, then click that guest or Deliver. Your tray holds up to three drinks. Load it at the counter, then click a highlighted table or its Serve button to deliver that table's drinks. Staff leave carried drinks alone. Cups, milk and pastries are finite: restock at the counter or pay extra for delivery. Specials change arrivals and visit length. Student visits last at most 20 seconds after their first drink. Content students may ask for one more tea or espresso; Wi-Fi makes this more likely. Follow-up drinks keep the original departure time. Click a spill or warning marker to handle it yourself or delegate. Your physical tasks take time, while seating and decisions remain available. Unfinished supply orders are refunded at closing. Water refills one guest’s patience for $2; asking a social party for quiet reduces noise for 12 seconds. Bookings and requests open here too. Pause freezes timers while you decide.</p></details>
       </div>
     </div>
   </section>
 
   <section id="results" class="screen" aria-labelledby="resultTitle">
-    <header class="page-header"><span class="wordmark">Little Café<span class="wordmark-dot">.</span></span><span class="step-label">04 / After closing</span></header>
+    <header class="page-header"><span class="wordmark">Little Café<span class="wordmark-dot">.</span></span><div class="header-status"><span class="step-label">04 / After closing</span><div id="resultLives" class="life-meter" role="img" aria-label="5 of 5 lives remaining"></div></div>
+    </header>
     <main class="receipt">
       <p class="eyebrow">Little Café · Daily receipt</p>
       <h1 id="resultTitle">Day complete</h1>
@@ -212,7 +215,18 @@
         <h2>Your café's character</h2><p id="resultIdentity"></p>
         <h2>What happened, and why</h2><p id="resultStory"></p>
       </details>
-      <button class="primary" onclick="nextDay()">A new day <span aria-hidden="true">→</span></button>
+      <button id="nextDayButton" class="primary" onclick="nextDay()">A new day <span aria-hidden="true">→</span></button>
+    </main>
+  </section>
+  <section id="gameOver" class="screen" aria-labelledby="restartTitle">
+    <header class="page-header"><span class="wordmark">Little Café<span class="wordmark-dot">.</span></span><div class="header-status"><span class="step-label">A new beginning</span><div id="restartLives" class="life-meter" role="img" aria-label="0 of 5 lives remaining"></div></div></header>
+    <main class="restart-paper">
+      <p class="eyebrow">Your next little café</p>
+      <h1 id="restartTitle">A fresh start.</h1>
+      <p>Choose one keepsake for Day 1.</p>
+      <div id="keepsakeChoices" class="keepsake-choices" aria-label="Choose one keepsake and restart"></div>
+      <p class="muted restart-note">Your new café starts with $150 and five lives. Choose an item to begin.</p>
+      <button id="restartFresh" class="primary" onclick="restartWithKeepsake('none')" hidden>Begin again <span aria-hidden="true">→</span></button>
     </main>
   </section>
   <script src="script.js"></script>

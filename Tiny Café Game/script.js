@@ -10,10 +10,12 @@ const supplyPacks = {
   pastries: { name: "Pastries", amount: 4, cost: 6, time: 4, max: 16 }
 };
 const trayCapacity = 3;
+const maxLives = 5;
 
 const startingCafe = {
   budget: 150,
   day: 1,
+  lives: maxLives,
   unlocked: 0,
   tables: 3,
   wifi: 0,
@@ -29,16 +31,20 @@ const startingCafe = {
   trend: null    // today's neighbourhood trend: { day, id }
 };
 
+// Capture pristine defaults before the live café can change nested objects.
+const freshCafeTemplate = JSON.stringify(startingCafe);
+let lastLifeChange = 0;
 let cafe;
 
 try {
   cafe = {
-    ...startingCafe,
+    ...JSON.parse(freshCafeTemplate),
     ...JSON.parse(localStorage.getItem("cafeSave"))
   };
 } catch {
-  cafe = { ...startingCafe };
+  cafe = JSON.parse(freshCafeTemplate);
 }
+cafe.lives = Number.isFinite(cafe.lives) ? Math.max(0, Math.min(maxLives, Math.floor(cafe.lives))) : maxLives;
 cafe.rep = { ...startingCafe.rep, ...cafe.rep };
 cafe.staff = cafe.staff || [...startingCafe.staff];
 cafe.regulars = cafe.regulars || {};
@@ -58,6 +64,88 @@ function saveGame() {
   } catch (error) {
     console.warn("Progress could not be saved in this browser.", error);
   }
+}
+
+// --------------------
+// RUN LIVES AND KEEPSAKES
+// --------------------
+
+function lifeIcon(filled, extraClass = "") {
+  return `<svg class="life-heart ${filled ? "is-filled" : "is-empty"} ${extraClass}" viewBox="0 0 28 28" aria-hidden="true"><path d="M14 24S4 18 4 11a6 6 0 0 1 10-4 6 6 0 0 1 10 4c0 7-10 13-10 13z"/></svg>`;
+}
+
+function renderLives() {
+  for (const id of ["scenarioLives", "setupLives", "playLives", "resultLives", "restartLives"]) {
+    const meter = document.getElementById(id);
+    if (!meter) continue;
+    const change = id === "resultLives" ? lastLifeChange : 0;
+    const key = `${cafe.lives}:${change}`;
+    if (meter.dataset.key !== key) {
+      meter.dataset.key = key;
+      meter.innerHTML = Array.from({ length: maxLives }, (_, index) => lifeIcon(index < cafe.lives,
+        change > 0 && index === cafe.lives - 1 ? "is-restored" : change < 0 && index === cafe.lives ? "is-lost" : "")).join("");
+    }
+    meter.classList.toggle("is-critical", cafe.lives === 1);
+    meter.setAttribute("aria-label", `${cafe.lives} of ${maxLives} lives remaining`);
+    meter.title = `${cafe.lives}/${maxLives} lives · All goals: +1 · Miss 2 or 3: −1 · Miss 1: unchanged`;
+  }
+}
+
+function applyLifeResult(goals) {
+  const met = goals.filter(goal => goal.value >= goal.target).length;
+  const before = cafe.lives;
+  const missed = goals.length - met;
+  const change = missed === 0 ? 1 : missed >= 2 ? -1 : 0;
+  cafe.lives = Math.max(0, Math.min(maxLives, before + change));
+  lastLifeChange = cafe.lives - before;
+  return met;
+}
+
+function keepsakeChoices() {
+  const choices = [];
+  if (cafe.tables > 0) choices.push({ id: "tables", kind: "tables", title: "One table", detail: "Begin with 4 tables", icon: "table" });
+  for (const [index, member] of cafe.staff.entries()) {
+    if (member.name === startingCafe.staff[0].name) continue;
+    choices.push({ id: `staff-${index}`, kind: "staff", member, title: `Keep ${member.name}`,
+      detail: `Juno + ${member.name} on Day 1`, icon: "staff" });
+  }
+  if (cafe.wifi > 0) choices.push({ id: "wifi", kind: "wifi", title: "Wi-Fi", detail: "Bring 1 upgrade level", icon: "wifi" });
+  if (cafe.sound > 0) choices.push({ id: "sound", kind: "sound", title: "Acoustics", detail: "Bring 1 upgrade level", icon: "sound" });
+  return choices;
+}
+
+function keepsakeIcon(kind) {
+  const paths = {
+    table: '<path d="M8 20h48v10H8zM13 30v24M51 30v24M24 30v15M42 30v15"/>',
+    staff: '<path d="M24 13v10l-9 10v23h34V33l-9-10V13zM24 13h16M24 23h16M25 37h14v9H25z"/>',
+    wifi: '<path d="M10 25a34 34 0 0 1 44 0M18 34a22 22 0 0 1 28 0M26 43a10 10 0 0 1 12 0"/><circle cx="32" cy="51" r="2"/>',
+    sound: '<path d="M13 26h10l12-10v32L23 38H13zM44 25a13 13 0 0 1 0 14M51 19a22 22 0 0 1 0 26"/>'
+  };
+  return `<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[kind]}</svg>`;
+}
+
+function renderKeepsakes() {
+  const choices = keepsakeChoices();
+  document.getElementById("keepsakeChoices").dataset.count = choices.length;
+  document.getElementById("keepsakeChoices").innerHTML = choices.map(choice =>
+    `<button class="keepsake-card" onclick="restartWithKeepsake('${choice.id}')" aria-label="Restart on Day 1: ${esc(choice.title)}. ${esc(choice.detail)}."><span class="keepsake-art">${keepsakeIcon(choice.icon)}</span><strong>${esc(choice.title)}</strong><small>${esc(choice.detail)}</small></button>`).join("");
+  document.getElementById("restartFresh").hidden = choices.length > 0;
+}
+
+function restartWithKeepsake(id) {
+  if (running || cafe.lives > 0) return;
+  const choices = keepsakeChoices();
+  const choice = choices.find(item => item.id === id);
+  if (!choice && !(id === "none" && choices.length === 0)) return;
+  const fresh = JSON.parse(freshCafeTemplate);
+  if (choice?.kind === "tables") fresh.tables++;
+  else if (choice?.kind === "staff") fresh.staff.push({ ...choice.member });
+  else if (choice?.kind === "wifi" || choice?.kind === "sound") fresh[choice.kind] = 1;
+  if (choice) fresh.keepsake = { kind: choice.kind, name: choice.title };
+  cafe = fresh;
+  lastLifeChange = 0;
+  saveGame();
+  showScreen("scenario");
 }
 
 // --------------------
@@ -122,6 +210,7 @@ function showMission() {
 // --------------------
 
 function showScreen(name) {
+  if (cafe.lives <= 0 && ["scenario", "setup", "play"].includes(name)) name = "gameOver";
   const nextScreen = document.getElementById(name);
   if (!nextScreen) {
     console.error(`Screen "${name}" does not exist.`);
@@ -136,6 +225,8 @@ function showScreen(name) {
 
   if (name === "scenario") showMission();
   if (name === "setup") updateSetup();
+  if (name === "gameOver") renderKeepsakes();
+  renderLives();
 }
 
 function buyUpgrade(item, cost) {
@@ -388,6 +479,7 @@ let customerSpending = {};
 // --------------------
 
 async function startDay() {
+  if (cafe.lives <= 0) { showScreen("gameOver"); return; }
   if (running || startingDay) return;
   startingDay = true;
   document.getElementById("message").textContent = "Preparing the café artwork…";
@@ -3069,12 +3161,16 @@ function updateLiveStats() {
   updateCustomerControls();
 }
 
-function renderResultGoals(mission, satisfaction) {
-  const goals = [
+function missionGoalResults(mission, satisfaction) {
+  return [
     { label: "Earnings", value: sales, target: mission.sales, prefix: "$", suffix: "" },
     { label: "Visit satisfaction", value: satisfaction, target: mission.satisfaction, prefix: "", suffix: "%" },
     { label: "Happy completed visits", value: outcomes.happy, target: mission.happy, prefix: "", suffix: "" }
   ];
+}
+
+function renderResultGoals(mission, satisfaction) {
+  const goals = missionGoalResults(mission, satisfaction);
   document.getElementById("resultGoals").innerHTML = goals.map(goal => {
     const met = goal.value >= goal.target;
     const percent = Math.max(0, Math.min(100, goal.value / goal.target * 100));
@@ -3106,10 +3202,9 @@ function endDay() {
 
   const mission = getMission();
 
-  const won =
-    sales >= mission.sales &&
-    satisfaction >= mission.satisfaction &&
-    outcomes.happy >= mission.happy;
+  const metGoals = applyLifeResult(missionGoalResults(mission, satisfaction));
+  const won = metGoals === 3;
+  const runEnded = cafe.lives === 0;
 
   // Revenue and live expenses carry to the next day
   cafe.budget += sales;
@@ -3137,11 +3232,14 @@ function endDay() {
   ).length;
 
   document.getElementById("resultTitle").textContent =
-    won ? "A day well spent." : "Every day is a fresh start.";
+    runEnded ? "A fresh start awaits." : won ? "A day well spent." : "Every day is a fresh start.";
 
-  document.getElementById("resultMessage").textContent = won
-    ? `Day ${cafe.day} · All three goals met.`
-    : `Day ${cafe.day} · Keep shaping your café and try this mission again.`;
+  document.getElementById("resultMessage").textContent = runEnded
+    ? `Day ${cafe.day} · Choose one keepsake and begin again.`
+    : won ? `Day ${cafe.day} · All three goals met.`
+    : metGoals > 0 ? `Day ${cafe.day} · Some goals met. Keep shaping your café.`
+    : `Day ${cafe.day} · Try a new approach tomorrow.`;
+  document.getElementById("nextDayButton").innerHTML = `${runEnded ? "Choose a keepsake" : "A new day"} <span aria-hidden="true">→</span>`;
   renderResultGoals(mission, satisfaction);
   document.querySelectorAll("#results details").forEach(details => { details.open = false; });
 
@@ -3187,13 +3285,13 @@ Regulars: ${arrivals.regular}`;
   document.getElementById("resultEffects").textContent += `\nStudent follow-up drinks: ${operationsStats.repeatSold} · $${operationsStats.repeatSales} extra revenue`;
   document.getElementById("resultMoney").textContent = cafe.budget;
 
-  cafe.day++;
+  if (!runEnded) cafe.day++;
   saveGame();
   showScreen("results");
 }
 
 function nextDay() {
-  showScreen("scenario");
+  showScreen(cafe.lives === 0 ? "gameOver" : "scenario");
 }
 
 // --------------------
@@ -3754,6 +3852,6 @@ function updateConcerns() {
   if (overview.dataset.key !== room) { overview.dataset.key = room; overview.innerHTML = room; }
 }
 
-// Begin with today's mission before preparing the café.
-showScreen("scenario");
+// A saved exhausted run must choose its keepsake before opening again.
+showScreen(cafe.lives === 0 ? "gameOver" : "scenario");
 
