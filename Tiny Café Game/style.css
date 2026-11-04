@@ -2872,3 +2872,57 @@ select {
     animation: none;
   }
 }
+
+/* Staff rest is available directly on each compact barista card. */
+.staff-actions {
+  display: flex;
+  flex-direction: column;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  gap: 4px;
+}
+
+.staff-actions button {
+  min-height: 28px;
+  padding: 4px 8px;
+}
+
+.staff-rest {
+  color: var(--olive);
+}
+
+.staff-energy {
+  margin-left: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.staff[data-energy="tired"] .staff-rest:not(:disabled),
+.staff[data-energy="low"] .staff-rest:not(:disabled) {
+  border-color: var(--rust);
+  background: #fff1e3;
+  color: var(--rust);
+}
+
+.staff[data-energy="low"] progress {
+  accent-color: var(--rust);
+}
+
+.staff[data-energy="low"] progress::-webkit-progress-value {
+  background: var(--rust);
+}
+
+.staff[data-energy="low"] progress::-moz-progress-bar {
+  background: var(--rust);
+}
+
+.staff[data-resting="true"] {
+  background: var(--olive-light);
+}
+
+@media (pointer: coarse) {
+  .staff-actions button {
+    min-height: 44px;
+  }
+}

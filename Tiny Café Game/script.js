@@ -11,6 +11,8 @@ const supplyPacks = {
 };
 const trayCapacity = 3;
 const maxLives = 5;
+const staffBreakSeconds = 10;
+const staffBreakRecovery = 40;
 
 const startingCafe = {
   budget: 150,
@@ -825,6 +827,7 @@ function updateOrderStatus() {
 }
 
 function takeOrder(customer, by) {
+  if (by && (by.rest > 0 || by.assignment)) return false;
   if (!needsDrink(customer) || tickets.some(t => t.id === customer.id)) return false;
   const repeat = !!customer.repeatPending;
   let special = null;
@@ -856,9 +859,24 @@ function coffeeServiceStatus() {
   return { state: "ready", label: "Machine ready", detail: "Orders brew automatically when supplies are available." };
 }
 
+// Explicit player priority wins; otherwise serve first drinks and the most
+// urgent deadlines before optional refills.
+function nextServiceTicket(state, predicate = () => true) {
+  return tickets.filter(ticket => ticket.state === state && needsDrink(findCustomer(ticket.id)) && predicate(ticket))
+    .sort((a, b) => {
+      if (!!a.priority !== !!b.priority) return a.priority ? -1 : 1;
+      if (!!a.repeat !== !!b.repeat) return a.repeat ? 1 : -1;
+      const remaining = ticket => {
+        const guest = findCustomer(ticket.id);
+        return ticket.repeat ? remainingVisit(guest) : guest.patience - guest.timer;
+      };
+      return remaining(a) - remaining(b);
+    })[0];
+}
+
 function startBrew() {
   if (problems.some(p => p.kind === "machine") || tickets.filter(t => t.state === "brewing").length >= slotCount) return false;
-  const t = tickets.find(x => x.state === "queued" && !stockBlock(x));
+  const t = nextServiceTicket("queued", ticket => !stockBlock(ticket));
   if (!t) return false;
   const recipe = drinkRecipe(t);
   for (const [key, amount] of Object.entries(recipe)) stock[key] -= amount;
@@ -891,6 +909,7 @@ function useCoffeeMachine() {
 }
 
 function serve(customer, by) {
+  if (by && (by.rest > 0 || by.assignment)) return;
   const ticket = tickets.find(t => t.id === customer.id);
   if (!ticket || !["ready", "carried"].includes(ticket.state) || !needsDrink(customer)) return;
   const repeat = !!ticket.repeat;
@@ -899,13 +918,20 @@ function serve(customer, by) {
   if (!repeat) {
     customer.waited = customer.timer;
     customer.timer = 0;
+    const party = partyOf(customer);
+    if (!party.some(guest => guest.partyServiceStarted)) {
+      party.forEach(guest => {
+        guest.partyServiceStarted = true;
+        if (guest.id !== customer.id && ["walking", "waiting"].includes(guest.state)) guest.patience += 3;
+      });
+    }
   }
   customer.repeatPending = false;
   customer.drinksServed++;
 
   let boost = repeat ? 5 : 15;
   let tip = 0;
-  if (by && Math.random() < by.sloppy + (by.grumpy ? 0.15 : 0)) {
+  if (by && Math.random() < staffMistakeChance(by)) {
     boost = -10;
     customer.cause = `${by.name} got the order wrong`;
     story.push(`${by.name} mixed up ${customer.name}'s order.`);
@@ -977,53 +1003,127 @@ function describeStaff(m) {
     m.sloppy > 0.15 ? "sloppy" : "precise", m.warmth >= 1 ? "warm" : "", m.grumpy ? "grumpy" : ""].filter(Boolean).join(", ");
 }
 
-function renderStaff() {
-  document.getElementById("staffRow").innerHTML = staff.map((m, i) =>
-    `<div class="staff"><b>${m.name}</b><small id="staffTask-${i}" title="${describeStaff(m)}">${m.rest > 0 ? "☕ On break" : m.assignment ? "Helping with a problem" : m.task || "Ready"}</small>` +
-    `<button onclick="toggleRole(${i})">${m.rest > 0 ? "On break" : m.role === "counter" ? "Counter" : "Floor"}</button>` +
-    `<progress id="st-e-${i}" max="100" value="${m.energy}"></progress></div>`).join("");
+function staffMistakeChance(member) {
+  const energy = Number.isFinite(member.energy) ? Math.max(0, Math.min(100, member.energy)) : 100;
+  const fatigue = Math.max(0, (60 - energy) / 60) * 0.3;
+  return Math.max(0, Math.min(0.85, (Number.isFinite(member.sloppy) ? member.sloppy : 0) + fatigue + (member.grumpy ? 0.15 : 0)));
 }
 
-function toggleRole(i) {
-  staff[i].role = staff[i].role === "counter" ? "floor" : "counter";
-  addEvent(`${staff[i].name} moves to the ${staff[i].role}.`);
+function staffEnergyState(member) {
+  return member.energy < 40 ? "low" : member.energy < 60 ? "tired" : "ready";
+}
+
+function updateStaffCard(member, index) {
+  const card = document.getElementById(`staff-card-${index}`);
+  if (card) {
+    card.dataset.energy = staffEnergyState(member);
+    card.dataset.resting = String(member.rest > 0);
+  }
+  const bar = document.getElementById(`st-e-${index}`);
+  const chance = Math.round(staffMistakeChance(member) * 100);
+  if (bar) {
+    bar.value = member.energy;
+    bar.setAttribute("aria-label", `${member.name}: ${Math.round(member.energy)}% energy`);
+    bar.title = `${Math.round(member.energy)}% energy · ${chance}% mistake chance`;
+  }
+  const energy = document.getElementById(`staff-energy-${index}`);
+  if (energy) {
+    energy.textContent = `${Math.round(member.energy)}%`;
+    energy.title = `${chance}% mistake chance; fatigue increases it below 60% energy`;
+  }
+  const task = document.getElementById(`staffTask-${index}`);
+  if (task) task.textContent = member.rest > 0 ? "On break" : member.assignment ? "Helping with a problem" : member.task || "Ready";
+  const button = document.getElementById(`staff-rest-${index}`);
+  if (button) {
+    button.disabled = member.rest > 0 || !!member.assignment || member.energy >= 100;
+    button.textContent = member.rest > 0 ? `☕ ${Math.max(1, Math.ceil(member.rest))}s` : `Rest · ${staffBreakSeconds}s`;
+    button.title = member.assignment ? "Finish the assigned task before resting"
+      : member.rest > 0 ? "Recovering energy; normal work resumes after the break"
+      : member.energy >= 100 ? "Fully rested" : `Recover up to ${staffBreakRecovery} energy over ${staffBreakSeconds}s`;
+  }
+}
+
+function renderStaff() {
+  document.getElementById("staffRow").innerHTML = staff.map((member, index) =>
+    `<div id="staff-card-${index}" class="staff" data-energy="${staffEnergyState(member)}" data-resting="${member.rest > 0}"><b>${esc(member.name)} <span id="staff-energy-${index}" class="staff-energy"></span></b><small id="staffTask-${index}" title="${describeStaff(member)}"></small>` +
+    `<div class="staff-actions"><button onclick="toggleRole(${index})" title="Switch between counter and floor">${member.role === "counter" ? "Counter" : "Floor"}</button><button id="staff-rest-${index}" class="staff-rest" onclick="restStaff(${index})">Rest · ${staffBreakSeconds}s</button></div>` +
+    `<progress id="st-e-${index}" max="100" value="${member.energy}"></progress></div>`).join("");
+  staff.forEach(updateStaffCard);
+}
+
+function restStaff(index) {
+  if (!running) return false;
+  const member = staff[index];
+  if (!member || member.rest > 0 || member.energy >= 100) return false;
+  if (member.assignment) {
+    managerFeedback(`${member.name} must finish the assigned task before resting.`);
+    return false;
+  }
+  member.rest = staffBreakSeconds;
+  member.askedBreak = true;
+  member.task = "On break";
+  // A direct rest action answers any pending break request for this barista.
+  const answered = requests.filter(request => request.kind === "break" && request.data.idx === index);
+  requests = requests.filter(request => !answered.includes(request));
+  if (answered.length) {
+    renderInbox();
+    if (focus.kind === "request" && answered.some(request => request.id === focus.id)) openFocus("none");
+  }
+  renderStaff();
+  managerFeedback(`${member.name} is resting for ${staffBreakSeconds}s. Energy recovers during the break.`);
+  return true;
+}
+
+function toggleRole(index) {
+  if (!running || !staff[index]) return;
+  staff[index].role = staff[index].role === "counter" ? "floor" : "counter";
+  addEvent(`${staff[index].name} moves to the ${staff[index].role}.`);
   renderStaff();
 }
 
 function updateStaff(dt) {
+  if (dt <= 0) return;
   staff.forEach((m, i) => {
-    m.cd -= dt * m.speed * (0.4 + 0.6 * m.energy / 100);
-    const bar = document.getElementById(`st-e-${i}`);
-    if (bar) bar.value = m.energy;
     const task = document.getElementById(`staffTask-${i}`);
-    if (task) task.textContent = m.rest > 0 ? "☕ On break" : m.task || "Ready";
     if (m.rest > 0) {
-      m.rest -= dt;
-      if (m.rest <= 0) {
+      const restingTime = Math.min(dt, m.rest);
+      m.energy = Math.min(100, m.energy + restingTime * staffBreakRecovery / staffBreakSeconds);
+      m.rest = Math.max(0, m.rest - restingTime);
+      if (m.rest <= 0.000001) {
         m.rest = 0;
         m.grumpy = false;
-        addEvent(`${m.name} is back from their break.`);
-        renderStaff();
+        m.askedBreak = false;
+        m.cd = 0;
+        m.task = "Ready";
+        story.push(`${m.name} returned from a break with ${Math.round(m.energy)}% energy.`);
+        addEvent(`${m.name} is rested and back on service.`);
       }
+      updateStaffCard(m, i);
       return;
     }
+    m.cd -= dt * m.speed * (0.4 + 0.6 * m.energy / 100);
+    updateStaffCard(m, i);
     if (m.assignment) {
       if (task) task.textContent = "Helping with a problem";
       return;
     }
     if (m.cd > 0) return;
     m.cd = 2;
-    m.energy = Math.max(0, m.energy - 4);
+    let jobEffort = 4;
     const jobs = {
       order: () => {
         const c = customers.find(x => needsDrink(x) && !tickets.some(t => t.id === x.id));
         return c ? takeOrder(c, m) : false;
       },
       deliver: () => {
-        const t = tickets.find(x => x.state === "ready");
-        const c = t && findCustomer(t.id);
-        if (!needsDrink(c)) return false;
-        serve(c, m);
+        const first = nextServiceTicket("ready");
+        const customer = first && findCustomer(first.id);
+        if (!customer) return false;
+        const batch = [first, ...tickets.filter(ticket => ticket !== first && ticket.state === "ready" &&
+          findCustomer(ticket.id)?.table === customer.table && needsDrink(findCustomer(ticket.id)))]
+          .slice(0, trayCapacity);
+        batch.forEach(ticket => serve(findCustomer(ticket.id), m));
+        jobEffort = 4 + Math.max(0, batch.length - 1) * 2;
         return true;
       },
       clean: () => {
@@ -1039,10 +1139,11 @@ function updateStaff(dt) {
       }
     };
     const job = (m.role === "floor" ? ["deliver", "clean", "order"] : ["order", "deliver", "clean"]).find(k => jobs[k]());
+    if (job) m.energy = Math.max(0, m.energy - jobEffort);
     const service = coffeeServiceStatus();
     m.task = job ? { deliver: "☕ Delivering", clean: "🧽 Cleaning", order: "📝 Taking orders" }[job]
       : service.state !== "ready" ? service.label : "Ready";
-    if (task) task.textContent = m.task;
+    updateStaffCard(m, i);
   });
 }
 
@@ -1076,6 +1177,19 @@ document.getElementById("liveMusic").onchange = function() {
   }
 };
 
+function waterActionState(customer) {
+  const party = customer ? partyOf(customer) : [];
+  const waiting = party.filter(guest => guest.state === "waiting");
+  const targets = waiting.filter(guest => !guest.waterReceived);
+  let reason = "";
+  if (!customer || !isSeated(customer)) reason = "Select a guest at the table first.";
+  else if (!waiting.length) reason = "This party has already been served; no water is needed.";
+  else if (managerTask) reason = "Finish your current task before bringing water.";
+  else if (!targets.length) reason = "Water has already been given to these waiting guests.";
+  else if (cafe.budget + sales < 2) reason = "You need $2 for a water jug.";
+  return { waiting, targets, reason };
+}
+
 function updateCustomerControls() {
   const customer = customers.find(c => c.id === selectedCustomer &&
     ["waiting", "drinking"].includes(c.state));
@@ -1104,47 +1218,46 @@ function updateCustomerControls() {
     : customer.repeatPending ? `Follow-up order · leaves in ${Math.ceil(remainingVisit(customer))}s`
     : `Enjoying their coffee · ${customer.drinksServed} served`;
 
+  const water = waterActionState(customer);
   const button = document.getElementById("waterButton");
-  button.hidden = !waiting;
-  button.disabled = !!managerTask || customer.waterReceived || cafe.budget + sales < 2;
-  button.textContent = customer.waterReceived ? "💧 Water given" : "💧 Water · $2";
-  const waterMessage = !waiting ? ""
-    : customer.waterFeedback > 0 ? "Patience refilled. A little more time to serve."
-    : customer.waterReceived ? "Water already offered."
-    : cafe.budget + sales < 2 ? "You need $2 to offer water."
-    : "";
+  button.hidden = water.waiting.length === 0;
+  button.disabled = !!water.reason;
+  const label = !water.targets.length ? "💧 Water given" : `💧 Water · T${customer.table + 1} · $2`;
+  if (button.textContent !== label) button.textContent = label;
+  button.title = water.reason || `Refill patience for ${water.targets.length} waiting guest${water.targets.length === 1 ? "" : "s"}; once per guest`;
+  const helped = water.waiting.filter(guest => guest.waterFeedback > 0).length;
+  const waterMessage = !water.waiting.length ? "" : managerTask ? water.reason
+    : helped ? `Patience refilled for ${helped} waiting guest${helped === 1 ? "" : "s"}.`
+    : water.reason || `One jug helps ${water.targets.length} waiting guest${water.targets.length === 1 ? "" : "s"}.`;
   const waterStatus = document.getElementById("waterStatus");
   if (waterStatus.textContent !== waterMessage) waterStatus.textContent = waterMessage;
 }
 
 function offerWater() {
   if (!running) return;
-  if (managerTask) { managerFeedback("Finish your current task before offering water."); return; }
-  const customer = customers.find(c => c.id === selectedCustomer);
-  if (!customer || customer.state !== "waiting") {
-    addEvent("Select a waiting customer to offer water.");
+  const customer = findCustomer(selectedCustomer);
+  const water = waterActionState(customer);
+  if (water.reason) {
+    document.getElementById("waterStatus").textContent = water.reason;
+    managerFeedback(water.reason);
     return;
   }
-  if (customer.waterReceived) {
-    addEvent("This customer already received water.");
-    return;
-  }
-  if (cafe.budget + sales < 2) {
-    addEvent("You need $2 to offer water.", true);
-    return;
-  }
-
   sales -= 2;
-  customer.timer = 0;
-  customer.happiness = Math.min(100, customer.happiness + 20);
-  customer.waterReceived = true;
-  customer.waterFeedback = 2;
-  addFloat(customer, "💧 + patience");
-  effects.waterGiven++;
+  for (const guest of water.targets) {
+    guest.timer = 0;
+    guest.happiness = Math.min(100, guest.happiness + 20);
+    guest.waterReceived = true;
+    guest.waterFeedback = 2;
+    addFloat(guest, "💧 Patience full");
+  }
+  effects.waterGiven += water.targets.length;
+  // If the selected guest already has a drink, show the restored meter of
+  // one of the friends the water actually helped.
+  if (customer.state !== "waiting") openFocus("customer", water.targets[0].id);
   updateLiveStats();
   drawCafe();
   drawCustomers();
-  managerFeedback(`Water for ${customer.name}: patience refilled, mood +20 (up to 100). −$2`);
+  managerFeedback(`Water for T${customer.table + 1}: ${water.targets.length} guest${water.targets.length === 1 ? "" : "s"} regained full patience. −$2`);
 }
 
 // --------------------
@@ -1705,20 +1818,16 @@ const requestKinds = {
       const m = staff[idx];
       return {
         title: `${m.name} is running low`,
-        text: "A 10-second break would help. They'll be away for a while; pushing on may make them grumpy and error-prone.",
+        text: "A 10-second break recovers up to 40 energy. They will be off service while resting; pushing on increases the risk of mistakes.",
         yes: "Take a break", no: "Not now", data: { idx }
       };
     },
     accept(req) {
-      const m = staff[req.data.idx];
-      m.rest = 10;
-      m.energy = Math.min(100, m.energy + 35);
-      story.push(`${m.name} took a break and came back sharper.`);
-      addEvent(`${m.name} takes a short break.`);
-      renderStaff();
+      restStaff(req.data.idx);
     },
     decline(req, expired) {
       const m = staff[req.data.idx];
+      if (!m || m.rest > 0) return;
       m.grumpy = true;
       story.push(`${m.name} was ${expired ? "left waiting" : "told to push on"} and got grumpy. Orders started slipping.`);
       addEvent(`${m.name} looks unimpressed.`, true);
@@ -2099,8 +2208,11 @@ function leaveCustomer(customer) {
   }
 
   if (selectedCustomer === customer.id) {
-    selectedCustomer = null;
-    document.getElementById("selectedCustomer").textContent = "None";
+    const next = customers.find(guest => guest.partyId === customer.partyId && guest.state === "waiting") ||
+      customers.find(guest => guest.partyId === customer.partyId && isSeated(guest));
+    selectedCustomer = next?.id ?? null;
+    if (next && focus.kind === "customer") focus = { kind: "customer", id: next.id };
+    if (!next) document.getElementById("selectedCustomer").textContent = "None";
   }
   renderWaiting();
   updateCustomerControls();
@@ -3265,7 +3377,7 @@ Still inside at closing: ${unfinished}`;
 Price refusals: ${effects.priceRefusals}
 No available tables: ${effects.noSeats}
 Noise complaints: ${effects.noiseComplaints}
-Water offered: ${effects.waterGiven}
+Guests given water: ${effects.waterGiven}
 Parties relocated: ${effects.moves}
 Manager interventions: ${effects.interventions}
 Requests accepted / declined: ${effects.requestsAccepted} / ${effects.requestsDeclined}
@@ -3447,7 +3559,8 @@ function seatParty(type, who, table, size, extra = {}) {
   const partyId = ++partyNumber;
   for (let i = 0; i < size; i++) {
     seatCustomer(type, i === 0 ? who : pickIdentity(type), table,
-      { ...extra, partyId, seatIndex: i });
+      { ...extra, partyId, seatIndex: i,
+        patience: (extra.patience ?? customerTypes[type].patience) + Math.min(6, Math.max(0, size - 1) * 2) });
   }
 }
 
@@ -3591,6 +3704,7 @@ function customerAction(action) {
     const t = tickets.find(t => t.id === c.id);
     if (t) {
       if (t.state !== "queued") { managerFeedback("This drink is already in progress."); return; }
+      tickets.forEach(ticket => { ticket.priority = ticket === t; });
       tickets = [t, ...tickets.filter(x => x !== t)];
       addFloat(c, "↑ Order first");
       managerFeedback(`${c.name} is first in the queue. Brewing drinks finish first.`);
