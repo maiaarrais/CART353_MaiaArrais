@@ -2584,3 +2584,87 @@ select {
 .scene-panel-heading .service-instruction p:empty {
   display: none;
 }
+
+/* A short forecast stays beside the table; full numbers remain optional. */
+.seating-preview-tip {
+  position: absolute;
+  z-index: 3;
+  width: 240px;
+  max-width: calc(100% - 16px);
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--olive);
+  border-radius: 8px;
+  background: var(--cream);
+  box-shadow: 0 4px 18px #3d302522;
+  pointer-events: none;
+}
+
+.seating-preview-tip[data-tone="risk"] {
+  border-left-color: var(--rust);
+}
+
+.seating-preview-tip strong {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.seating-preview-tip p {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.seating-card .forecast-headline {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.forecast-details summary {
+  padding: 4px 0;
+  font-size: 11px;
+}
+
+.emergence-summary {
+  margin-top: 24px;
+}
+
+.emergence-summary h2 {
+  font-size: 20px;
+}
+
+#emergenceMoments {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+#emergenceMoments li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px dashed var(--line);
+}
+
+#emergenceMoments li > span {
+  display: grid;
+  place-items: center;
+  flex: 0 0 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--olive-light);
+  color: var(--olive);
+}
+
+#emergenceMoments .moment-distraction > span {
+  background: #f0d6c6;
+  color: var(--rust);
+}
+
+#emergenceMoments p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}

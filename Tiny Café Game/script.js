@@ -348,6 +348,15 @@ const names = ["Ana", "Leo", "Mara", "Sam", "Iris", "Theo", "Noor", "Jules", "Pi
 let links = [];          // live customer-to-customer effects, drawn in the room
 let seenLinks = new Set();
 let story = [];          // cause-and-effect lines for the closing receipt
+let emergenceClock = 0;
+let neighbourEpisodes = new Map();
+let neighbourCooldowns = new Map();
+let neighbourReactions = new Map();
+let connectionFlashes = new Map();
+let emergenceMoments = new Map();
+let neighbourRelief = new Map();
+let neighbourExposure = new Map();
+const reducedSceneMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches || false;
 
 let visitors = 0;
 let sales = 0;
@@ -419,6 +428,14 @@ async function startDay() {
   links = [];
   seenLinks = new Set();
   story = [];
+  emergenceClock = 0;
+  neighbourEpisodes.clear();
+  neighbourCooldowns.clear();
+  neighbourReactions.clear();
+  connectionFlashes.clear();
+  emergenceMoments.clear();
+  neighbourRelief.clear();
+  neighbourExposure.clear();
 
   tickets = [];
   stock = { ...cafe.stock };
@@ -1921,6 +1938,11 @@ function recordOutcome(customer, outcome) {
   satisfactionTotal += Math.max(0, Math.min(100, customer.happiness));
   completedVisits++;
   recordReview(customer, outcome);
+  const relief = neighbourRelief.get(customer.id);
+  if (outcome === "happy" && relief && !neighbourLinks().some(link => link.kind === "annoy" && link.quiet.id === customer.id)) {
+    emergenceMoments.set(`guest-${customer.id}`, { kind: "recovery", priority: 4, at: emergenceClock,
+      text: `${customer.name} left happy after ${relief.followUp}.` });
+  }
 }
 
 function leaveCustomer(customer) {
@@ -2038,9 +2060,95 @@ function roomNoise(guests = customers.filter(stillInside)) {
     (liveAct ? 3 : 0) + getTrend().noise - cafe.sound * 2);
 }
 
+function connectionKey(effect) {
+  return `${effect.kind}:${[effect.a.table, effect.b.table].sort((a, b) => a - b).join(":")}`;
+}
+
+function showNeighbourReaction(customer, kind, sourceId = null) {
+  const current = neighbourReactions.get(customer.id);
+  if (current && emergenceClock - current.at < 2.2 && current.kind === "distracted" && kind !== "relief") return;
+  neighbourReactions.set(customer.id, { kind, sourceId, at: emergenceClock });
+}
+
+function trackNeighbourEpisodes(effects, dt) {
+  if (dt <= 0) return;
+  emergenceClock += dt;
+  const groups = new Map();
+  for (const effect of effects) {
+    if (effect.kind === "annoy") neighbourExposure.set(effect.quiet.id, emergenceClock);
+    const parties = [effect.a.partyId ?? effect.a.id, effect.b.partyId ?? effect.b.id].sort((a, b) => a - b);
+    const key = `${connectionKey(effect)}:${parties.join(":")}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(effect);
+  }
+  const next = new Map();
+  for (const [key, group] of groups) {
+    const first = group[0];
+    const episode = neighbourEpisodes.get(key) || { duration: 0, recorded: false };
+    if (!neighbourEpisodes.has(key) && emergenceClock - (neighbourCooldowns.get(key) ?? -Infinity) >= 7) {
+      neighbourCooldowns.set(key, emergenceClock);
+      connectionFlashes.set(connectionKey(first), { at: emergenceClock });
+      const guests = new Map();
+      for (const effect of group) {
+        for (const [guest, rate, other] of [[effect.a, effect.aRate, effect.b], [effect.b, effect.bRate, effect.a]]) {
+          const existing = guests.get(guest.id);
+          if (!existing || rate < existing.rate) guests.set(guest.id, { guest, rate, other });
+        }
+      }
+      for (const { guest, rate, other } of guests.values()) {
+        showNeighbourReaction(guest, rate < 0 ? "distracted" : first.kind === "annoy" ? "energy"
+          : guest.type === "student" && other.type === "student" ? "study" : "company", other.id);
+      }
+    }
+    episode.duration += dt;
+    if (!episode.recorded && episode.duration >= 2) {
+      episode.recorded = true;
+      if (first.kind === "annoy") {
+        for (const effect of group) emergenceMoments.set(`guest-${effect.quiet.id}`, {
+          kind: "distraction", priority: 2, at: emergenceClock,
+          text: `${effect.quiet.name} was distracted by ${effect.loud.name}'s lively table.`
+        });
+      } else emergenceMoments.set(`company-${key}`, {
+        kind: "company", priority: 1, at: emergenceClock,
+        text: first.a.type === "student" && first.b.type === "student"
+          ? `${first.a.name} and ${first.b.name} found a good spot to study near each other.`
+          : `${first.a.name} and ${first.b.name} hit it off across neighbouring tables.`
+      });
+    }
+    next.set(key, episode);
+  }
+  neighbourEpisodes = next;
+  for (const [id, reaction] of neighbourReactions) if (emergenceClock - reaction.at >= 2.2) neighbourReactions.delete(id);
+  for (const [key, flash] of connectionFlashes) if (emergenceClock - flash.at >= 2.6) connectionFlashes.delete(key);
+}
+
+// Record an observed improvement after an actual seating or quiet intervention.
+function noteNeighbourRelief(before, action, followUp) {
+  const stillDistracted = new Set(neighbourLinks().filter(link => link.kind === "annoy").map(link => link.quiet.id));
+  for (const effect of before.filter(link => link.kind === "annoy")) {
+    const guest = effect.quiet;
+    if (!isSeated(guest) || !neighbourExposure.has(guest.id) || stillDistracted.has(guest.id)) continue;
+    const prior = neighbourRelief.get(guest.id);
+    if (prior?.at === emergenceClock) continue;
+    neighbourRelief.set(guest.id, { action, followUp, at: emergenceClock });
+    showNeighbourReaction(guest, "relief");
+    emergenceMoments.set(`guest-${guest.id}`, { kind: "relief", priority: 3, at: emergenceClock,
+      text: `${action} stopped the distraction for ${guest.name}.` });
+  }
+}
+
+function renderEmergenceSummary() {
+  const moments = [...emergenceMoments.values()].sort((a, b) => b.priority - a.priority || b.at - a.at).slice(0, 3);
+  document.getElementById("emergenceSummary").hidden = !moments.length;
+  document.getElementById("emergenceMoments").innerHTML = moments.map(moment =>
+    `<li class="moment-${moment.kind}"><span aria-hidden="true">${moment.kind === "distraction" ? "!" : moment.kind === "company" ? "♡" : "✓"}</span><p>${esc(moment.text)}</p></li>`).join("");
+}
+
 function applyNeighborEffects(inside, dt) {
   links = [];
-  for (const effect of neighbourLinks(inside.filter(isSeated))) {
+  const effects = neighbourLinks(inside.filter(isSeated));
+  trackNeighbourEpisodes(effects, dt);
+  for (const effect of effects) {
     const { a, b, aRate, bRate, kind, text } = effect;
     a.happiness += aRate * dt;
     b.happiness += bRate * dt;
@@ -2223,6 +2331,7 @@ canvas.addEventListener("pointerdown", event => {
 
 canvas.addEventListener("pointermove", event => {
   hoveredTable = tableAtPoint(canvasPoint(event));
+  if (focus.kind === "waiting") setSeatingPreview(hoveredTable);
   if (!guestDrag || guestDrag.pointerId !== event.pointerId) return;
   if (!guestDrag.active && Math.hypot(event.clientX - guestDrag.startX, event.clientY - guestDrag.startY) < 7) return;
   if (!guestDrag.active) {
@@ -2247,7 +2356,10 @@ canvas.addEventListener("pointerup", event => {
   else movePartyTo(drag.customerId, target);
 });
 
-canvas.addEventListener("pointerleave", () => { hoveredTable = null; });
+canvas.addEventListener("pointerleave", () => {
+  hoveredTable = null;
+  if (focus.kind === "waiting") setSeatingPreview(null);
+});
 
 canvas.addEventListener("pointercancel", () => {
   suppressCanvasClick = !!guestDrag?.active;
@@ -2365,9 +2477,11 @@ function drawRelationshipLines(context, effects, forecast = false) {
     const start = tablePositions[link.a.table], end = tablePositions[link.b.table];
     const middleX = (start.x + end.x) / 2, middleY = (start.y + end.y) / 2 + 22;
     const color = link.kind === "annoy" ? "#a55b3e" : "#687946";
+    const flash = !forecast && connectionFlashes.get(connectionKey(link));
+    const fresh = flash && emergenceClock - flash.at < 2.6;
     context.strokeStyle = color;
-    context.lineWidth = 1.5 + Math.min(1.5, link.count * 0.2);
-    context.globalAlpha = forecast ? 0.85 : 0.5;
+    context.lineWidth = fresh ? 3.5 : 1.5 + Math.min(1, link.count * 0.15);
+    context.globalAlpha = forecast ? 0.85 : fresh ? reducedSceneMotion ? 0.9 : 0.95 - (emergenceClock - flash.at) * 0.2 : 0.26;
     context.setLineDash(forecast || link.kind === "annoy" ? [6, 6] : []);
     context.beginPath();
     context.moveTo(start.x, start.y + 28);
@@ -2375,7 +2489,7 @@ function drawRelationshipLines(context, effects, forecast = false) {
     context.stroke();
     context.setLineDash([]);
     context.globalAlpha = 0.95;
-    drawCircle(middleX, middleY - 11, 9, "#fffaf3", context);
+    drawCircle(middleX, middleY - 11, fresh ? 12 : 9, "#fffaf3", context);
     context.fillStyle = color;
     context.textAlign = "center";
     context.font = "bold 12px sans-serif";
@@ -2713,8 +2827,11 @@ function drawCustomerBody(c, context) {
   const carried = tickets.find(t => t.state === "carried" && t.id === c.id);
   if (selectedCustomer === c.id || carried) drawCircle(c.x, c.y, 24, carried ? "#f4d183" : "#fffaf3", context);
   drawCircle(c.x, c.y, 18, customerTypes[c.type].color, context);
-  drawCircle(c.x - 5, c.y - 3, 2, "#49372e", context);
-  drawCircle(c.x + 5, c.y - 3, 2, "#49372e", context);
+  const reaction = neighbourReactions.get(c.id);
+  const other = reaction && findCustomer(reaction.sourceId);
+  const glance = !reducedSceneMotion && reaction && emergenceClock - reaction.at < 2.2 && other ? Math.sign(other.x - c.x) * 2 : 0;
+  drawCircle(c.x - 5 + glance, c.y - 3, 2, "#49372e", context);
+  drawCircle(c.x + 5 + glance, c.y - 3, 2, "#49372e", context);
   context.strokeStyle = "#49372e";
   context.lineWidth = 1.5;
   context.beginPath();
@@ -2736,6 +2853,38 @@ function drawDrinkIcon(x, y, drink, fill = 1, context = ctx) {
   context.beginPath();
   context.arc(x + 8, y - 1, 4, -Math.PI / 2, Math.PI / 2);
   context.stroke();
+}
+
+function drawNeighbourReaction(customer, context = ctx) {
+  const reaction = neighbourReactions.get(customer.id);
+  if (!reaction || emergenceClock - reaction.at >= 2.2) return;
+  const age = emergenceClock - reaction.at;
+  const negative = reaction.kind === "distracted";
+  const color = negative ? "#a55b3e" : "#687946";
+  const symbols = { distracted: "!", company: "♡", study: "▤", energy: "♪", relief: "✓" };
+  context.save();
+  context.globalAlpha = reducedSceneMotion ? 1 : Math.min(1, (2.2 - age) / 0.6);
+  // A short signed segment shows the neighbour mood change without a new meter.
+  context.beginPath();
+  context.arc(customer.x, customer.y, 27, -Math.PI / 2, -Math.PI / 2 + (negative ? -1 : 1) * Math.PI * 0.65, negative);
+  context.strokeStyle = "#fffaf0";
+  context.lineWidth = 6;
+  context.stroke();
+  context.strokeStyle = color;
+  context.lineWidth = 3;
+  context.stroke();
+  const x = customer.x - 30, y = customer.y - 24 - (reducedSceneMotion ? 0 : Math.min(4, age * 3));
+  drawCircle(x, y, 12, "#fffaf0", context);
+  context.strokeStyle = color;
+  context.lineWidth = 1.5;
+  context.stroke();
+  context.fillStyle = color;
+  context.font = "bold 14px sans-serif";
+  context.textAlign = "center";
+  context.fillText(symbols[reaction.kind], x, y + 5);
+  context.font = "bold 10px sans-serif";
+  context.fillText(negative ? "−" : "+", customer.x + (negative ? -24 : 24), customer.y - 20);
+  context.restore();
 }
 
 function drawCustomers() {
@@ -2791,6 +2940,7 @@ function drawCustomers() {
       ctx.font = "14px sans-serif";
       ctx.fillText(c.quietFor > 0 ? "🤫" : "♫", c.x + 29, c.y + 5);
     }
+    drawNeighbourReaction(c);
     if (c.id === selectedCustomer || ticket?.state === "carried") {
       ctx.font = "12px sans-serif";
       const label = `${c.name} · T${c.table + 1}`;
@@ -3026,6 +3176,7 @@ Regulars: ${arrivals.regular}`;
   document.getElementById("resultStory").textContent =
     story.slice(-12).join("\n") || "A quiet day. Nothing out of the ordinary.";
 
+  renderEmergenceSummary();
   renderReviews();
   document.getElementById("resultEffects").textContent +=
     `\nSupply costs: $${operationsStats.restockCost}\nSpecials served: ${operationsStats.specialSold} ($${operationsStats.specialSales})\nTray deliveries: ${operationsStats.trayServed}\nProblems fixed: ${operationsStats.fixed}\nPrepared drinks wasted: ${operationsStats.waste}\nStock carried forward: ${stock.cups} cups, ${stock.milk} milk, ${stock.pastries} pastries`;
@@ -3117,9 +3268,45 @@ function seatingForecast(party, table) {
     rate: rate / party.size, beforeNoise, projectedNoise };
 }
 
+function forecastHeadline(forecast) {
+  if (forecast.blocked) return forecast.blocked;
+  const distraction = forecast.connections.find(link => link.kind === "annoy");
+  if (distraction) return `${distraction.quiet.name} (${distraction.quiet.type}) would be distracted by ${distraction.loud.name}.`;
+  if (forecast.projectedNoise > forecast.beforeNoise && forecast.tone === "risk") {
+    return `Noise would rise to ${forecast.projectedNoise}; this could disturb guests.`;
+  }
+  const company = forecast.connections.find(link => link.kind === "buzz");
+  if (company) return company.a.type === "student" && company.b.type === "student"
+    ? `Good study company for ${company.b.name}.` : `Good company for ${company.b.name}.`;
+  return forecast.tone === "risk" ? "The room is too noisy for this party." : "A little space; no nearby table effects.";
+}
+
+function updateSeatingPreviewTip() {
+  const tip = document.getElementById("seatingPreviewTip");
+  const forecast = running && activeSeatingPreview();
+  tip.hidden = !forecast || !!forecast.blocked;
+  if (tip.hidden) { tip.dataset.key = ""; return; }
+  const headline = forecastHeadline(forecast);
+  const key = `${forecast.table}:${forecast.tone}:${headline}`;
+  if (tip.dataset.key !== key) {
+    tip.dataset.key = key;
+    tip.dataset.tone = forecast.tone;
+    tip.innerHTML = `<strong>Preview · T${forecast.table + 1}</strong><p>${esc(headline)}</p>`;
+  }
+  const stage = document.getElementById("sceneStage").getBoundingClientRect();
+  const rect = canvas.getBoundingClientRect();
+  const table = tablePositions[forecast.table];
+  const bounds = tip.getBoundingClientRect();
+  const x = rect.left - stage.left + table.x / sceneSize.width * rect.width;
+  const y = rect.top - stage.top + (table.y + 90) / sceneSize.height * rect.height;
+  tip.style.left = `${Math.max(8, Math.min(x - 120, stage.width - 248))}px`;
+  tip.style.top = `${Math.max(8, Math.min(y, stage.height - bounds.height - 8))}px`;
+}
+
 function setSeatingPreview(table) {
   const party = focus.kind === "waiting" && waitingParties.find(p => p.id === focus.id);
   previewTable = party && table != null && !tableBlockReason(table, party.size) ? table : null;
+  updateSeatingPreviewTip();
 }
 
 function activeSeatingPreview() {
@@ -3134,14 +3321,15 @@ function activeSeatingPreview() {
 }
 
 function seatingCards(party) {
-  return `<p class="forecast-note">Forecast at current music, sound panels and crowd, once everyone is seated. Quiet requests are temporary. Hover or focus an option to preview; select Seat here to confirm.</p>` +
+  return '<p class="forecast-note">Hover or focus a table to preview. Choose Seat here to confirm.</p>' +
     Array.from({ length: cafe.tables }, (_, table) => {
       const f = seatingForecast(party, table);
       const signed = f.rate > 0 ? "+" : "";
-      return `<article class="seating-card ${f.tone}" onpointerenter="setSeatingPreview(${table})" onpointerleave="setSeatingPreview(null)">
+      return `<article class="seating-card ${f.tone}" onpointerenter="setSeatingPreview(${table})" onpointerleave="setSeatingPreview(null)" onfocusin="setSeatingPreview(${table})">
         <div class="seating-card-heading"><strong>T${table + 1} · ${tableArtwork(table).chairs.length} seats</strong><span>${esc(f.label)}</span></div>
-        ${f.blocked ? `<p>${esc(f.blocked)}</p>` : `<ul>${f.notes.map(note => `<li>${esc(note)}</li>`).join("")}</ul>
-        <p class="forecast-numbers">Neighbour mood / guest: ${signed}${f.rate.toFixed(1)}/s · Room noise: ${f.beforeNoise} → ${f.projectedNoise}</p>`}
+        <p class="forecast-headline">${esc(forecastHeadline(f))}</p>
+        ${f.blocked ? "" : `<details class="forecast-details"><summary>Why?</summary><ul>${f.notes.map(note => `<li>${esc(note)}</li>`).join("")}</ul>
+        <p class="forecast-numbers">Neighbour mood / guest: ${signed}${f.rate.toFixed(1)}/s · Room noise: ${f.beforeNoise} → ${f.projectedNoise}</p></details>`}
         <button onclick="seatWaiting(${party.id}, ${table})" onfocus="setSeatingPreview(${table})" onblur="setSeatingPreview(null)" ${f.blocked ? "disabled" : ""}>${f.blocked ? "Unavailable" : `Seat here · T${table + 1}`}</button>
       </article>`;
     }).join("");
@@ -3253,6 +3441,7 @@ function movePartyTo(customerId, table) {
     return;
   }
   const old = c.table;
+  const beforeNeighbours = neighbourLinks();
   group.forEach((x, i) => {
     const offset = seatOffsets(table)[i];
     x.table = table;
@@ -3262,6 +3451,7 @@ function movePartyTo(customerId, table) {
     x.happiness = Math.max(0, x.happiness - 4);
   });
   if (!dirtyTables.includes(old)) dirtyTables.push(old);
+  noteNeighbourRelief(beforeNeighbours, `Moving ${c.name}'s party`, `you moved ${c.name}'s party away from distractions`);
   effects.moves++;
   managerFeedback(`Moved ${c.name}'s party to T${table + 1}. Mood −4 each; orders kept. Clean T${old + 1} for the next guests.`);
   renderBoard();
@@ -3277,7 +3467,9 @@ function customerAction(action) {
   const c = findCustomer(selectedCustomer);
   if (!c || !isSeated(c)) return;
   if (action === "calm" && c.type === "social" && !(c.quietFor > 0)) {
+    const beforeNeighbours = neighbourLinks();
     partyOf(c).forEach(x => { x.quietFor = 12; x.happiness = Math.max(0, x.happiness - 5); addFloat(x, "🤫 12s · −5"); });
+    noteNeighbourRelief(beforeNeighbours, `Asking ${c.name}'s party for quiet`, `you asked ${c.name}'s party for quiet`);
     managerFeedback(`${c.name}'s party will keep quiet for 12s. Less room and neighbour noise; party mood −5.`);
   } else if (action === "refund" && !c.refunded && cafe.budget + sales >= 3) {
     sales -= 3;
@@ -3441,6 +3633,7 @@ function cleanTable(table) {
 }
 
 function updateFocusPanel() {
+  updateSeatingPreviewTip();
   updateProblemPopover();
   const scenePanel = document.getElementById("sceneActionPanel");
   const activeProblem = focus.kind === "problem" && problems.some(p => p.id === focus.id);
