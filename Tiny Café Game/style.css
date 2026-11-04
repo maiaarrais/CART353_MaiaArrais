@@ -2926,3 +2926,109 @@ select {
     min-height: 44px;
   }
 }
+
+/* Noise management uses the same compact in-room action panel. */
+#roomStatus[data-level="loud"] {
+  color: var(--rust);
+  border-color: var(--rust);
+  background: #fff1e3;
+}
+
+.noise-controls {
+  margin-top: 12px;
+}
+
+.noise-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--olive);
+  font-size: 13px;
+}
+
+.noise-total strong {
+  font: 30px Georgia, serif;
+}
+
+.noise-sources summary {
+  padding: 6px 0 10px;
+  font-size: 11px;
+}
+
+.noise-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 16px;
+  margin: 0 0 14px;
+  font-size: 11px;
+}
+
+.noise-breakdown > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.noise-breakdown dt {
+  color: var(--muted);
+}
+
+.noise-breakdown dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.noise-controls .music-control {
+  width: 100%;
+  margin: 8px 0 14px;
+}
+
+.noise-controls .music-control input {
+  flex: 1;
+  width: auto;
+  min-width: 50px;
+}
+
+.noise-option {
+  margin-top: 14px;
+}
+
+.noise-option > label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.noise-option > select,
+.noise-option > button,
+#noiseEndLive {
+  width: 100%;
+}
+
+.noise-option p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.noise-party-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.noise-party-actions button,
+#walkInHoldButton,
+#noiseEndLive {
+  min-height: 38px;
+  padding: 8px;
+  font-size: 12px;
+}
+
+.noise-party-actions .muted {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 11px;
+}

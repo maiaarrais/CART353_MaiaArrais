@@ -433,6 +433,9 @@ let focus = { kind: "none", id: null };
 let previewTable = null;
 let counterTab = "supplies";
 let hoveredTable = null;
+let quietTable = null;
+let walkInsHeldFor = 0;
+let walkInHoldCooldown = 0;
 let guestDrag = null;
 let suppressCanvasClick = false;
 let floatingNotes = [];
@@ -512,6 +515,9 @@ async function startDay() {
   focus = { kind: "none", id: null };
   counterTab = "supplies";
   hoveredTable = null;
+  quietTable = null;
+  walkInsHeldFor = 0;
+  walkInHoldCooldown = 0;
   previewTable = null;
   floatingNotes = [];
   document.getElementById("focusControls").dataset.key = "";
@@ -670,6 +676,7 @@ function pickIdentity(type) {
 }
 
 function createCustomer() {
+  if (walkInsHeldFor > 0) return;
   const choices = ["student", "social", "regular"];
 
   for (let i = 0; i < cafe.wifi * 2; i++) {
@@ -1169,6 +1176,7 @@ document.getElementById("liveMusic").oninput = function() {
   document.getElementById("liveMusicValue").textContent = cafe.music;
 
   saveGame();
+  if (running) updateLiveStats();
 };
 
 document.getElementById("liveMusic").onchange = function() {
@@ -1465,6 +1473,8 @@ function resolveProblem(id) {
 }
 
 function updateOperations(dt) {
+  walkInsHeldFor = Math.max(0, walkInsHeldFor - dt);
+  walkInHoldCooldown = Math.max(0, walkInHoldCooldown - dt);
   if (managerTask) {
     managerTask.time -= dt;
     if (managerTask.time <= 0) {
@@ -2236,13 +2246,14 @@ function addLink(a, b, kind, text) {
 function neighbourEffect(a, b) {
   if (a.partyId != null && a.partyId === b.partyId) return null;
   if (Math.hypot(a.x - b.x, a.y - b.y) > 270) return null;
-  const loudA = a.type === "social" && !(a.quietFor > 0);
-  const loudB = b.type === "social" && !(b.quietFor > 0);
+  const loudA = a.type === "social" && !(a.quietFor > 0) && a.table !== quietTable;
+  const loudB = b.type === "social" && !(b.quietFor > 0) && b.table !== quietTable;
   const damp = Math.max(0.3, 1 - cafe.sound * 0.2);
   if (loudA && b.type === "student" || loudB && a.type === "student") {
     const loud = loudA ? a : b, quiet = loudA ? b : a;
-    return { kind: "annoy", aRate: loudA ? 0.8 * damp : -2.5 * damp,
-      bRate: loudA ? -2.5 * damp : 0.8 * damp, loud, quiet,
+    const distraction = -2.5 * damp * (quiet.table === quietTable ? 0.35 : 1);
+    return { kind: "annoy", aRate: loudA ? 0.8 * damp : distraction,
+      bRate: loudA ? distraction : 0.8 * damp, loud, quiet,
       text: `${quiet.name} is distracted by ${loud.name}'s table.` };
   }
   if (loudA && loudB || a.type === "regular" && b.type === "regular") {
@@ -2268,10 +2279,108 @@ function neighbourLinks(guests = customers.filter(isSeated)) {
   return result;
 }
 
+function roomNoiseParts(guests = customers.filter(stillInside)) {
+  const conversations = new Map();
+  for (const guest of guests) {
+    if (guest.type !== "social" || guest.quietFor > 0 || guest.table === quietTable) continue;
+    const key = guest.partyId ?? guest.table ?? guest.id;
+    conversations.set(key, (conversations.get(key) || 0) + 1);
+  }
+  const parts = {
+    music: cafe.music,
+    conversation: [...conversations.values()].reduce((sum, size) => sum + Math.min(4, size + 1), 0),
+    crowd: Math.ceil(Math.max(0, guests.length - 3) / 2),
+    live: liveAct ? 3 : 0,
+    neighbourhood: getTrend().noise,
+    panels: -cafe.sound * 2
+  };
+  return { ...parts, total: Math.max(0, Object.values(parts).reduce((sum, value) => sum + value, 0)) };
+}
+
 function roomNoise(guests = customers.filter(stillInside)) {
-  const social = guests.filter(c => c.type === "social" && !(c.quietFor > 0)).length;
-  return Math.max(0, cafe.music + social * 2 + Math.max(0, guests.length - 3) +
-    (liveAct ? 3 : 0) + getTrend().noise - cafe.sound * 2);
+  return roomNoiseParts(guests).total;
+}
+
+function noiseAtTable(table, level = roomNoise()) {
+  return Math.max(0, level - (table === quietTable ? 4 : 0));
+}
+
+function askPartyQuiet(id) {
+  const guest = findCustomer(id);
+  if (!running || !guest || !isSeated(guest) || guest.type !== "social" || guest.quietFor > 0 || guest.table === quietTable) return false;
+  const before = neighbourLinks();
+  partyOf(guest).forEach(member => {
+    member.quietFor = 12;
+    member.happiness = Math.max(0, member.happiness - 5);
+    addFloat(member, "🤫 12s · −5");
+  });
+  noteNeighbourRelief(before, `Asking ${guest.name}'s party for quiet`, `you asked ${guest.name}'s party for quiet`);
+  effects.interventions++;
+  managerFeedback(`T${guest.table + 1} will keep quiet for 12s. Party mood −5 each.`);
+  return true;
+}
+
+function setQuietTable(value) {
+  if (!running) return;
+  const next = value === "" || value === null ? null : Number(value);
+  if (next !== null && (!Number.isInteger(next) || next < 0 || next >= cafe.tables)) return;
+  if (next === quietTable) return;
+  const before = neighbourLinks();
+  quietTable = next;
+  if (next !== null) noteNeighbourRelief(before, `Making T${next + 1} a quiet table`, `you made T${next + 1} a quiet table`);
+  effects.interventions++;
+  managerFeedback(next === null ? "Quiet table removed. All tables are open for conversation."
+    : `T${next + 1} is the quiet table: less noise and distraction, but social guests lose buzz and mood.`);
+}
+
+function toggleWalkIns() {
+  if (!running) return;
+  if (walkInsHeldFor > 0) {
+    walkInsHeldFor = 0;
+    managerFeedback("Walk-ins resumed. Waiting guests and bookings kept their places.");
+  } else if (walkInHoldCooldown <= 0) {
+    walkInsHeldFor = 12;
+    walkInHoldCooldown = 30;
+    effects.interventions++;
+    managerFeedback("New walk-ins paused for 12s. Existing waiting parties and bookings continue; fewer arrivals mean fewer possible sales.");
+  }
+}
+
+function renderNoiseControls() {
+  const parts = roomNoiseParts();
+  document.getElementById("noiseEndLive").hidden = !liveAct;
+  for (const [key, id] of [["music", "noiseMusic"], ["conversation", "noiseConversation"], ["crowd", "noiseCrowd"],
+    ["live", "noiseLive"], ["neighbourhood", "noiseNeighbourhood"], ["panels", "noisePanels"], ["total", "noiseTotal"]]) {
+    document.getElementById(id).textContent = parts[key];
+  }
+  const select = document.getElementById("quietTableSelect");
+  const options = '<option value="">No quiet table</option>' + Array.from({ length: cafe.tables }, (_, table) =>
+    `<option value="${table}">T${table + 1}</option>`).join("");
+  if (select.dataset.options !== options) { select.dataset.options = options; select.innerHTML = options; }
+  select.value = quietTable === null ? "" : String(quietTable);
+  const hold = document.getElementById("walkInHoldButton");
+  hold.disabled = walkInsHeldFor <= 0 && walkInHoldCooldown > 0;
+  hold.textContent = walkInsHeldFor > 0 ? `Resume walk-ins · ${Math.ceil(walkInsHeldFor)}s held`
+    : walkInHoldCooldown > 0 ? `Door hold ready in ${Math.ceil(walkInHoldCooldown)}s` : "Pause new walk-ins · 12s";
+  const parties = new Map();
+  for (const guest of customers.filter(isSeated)) {
+    if (guest.type !== "social" || guest.table === quietTable) continue;
+    if (!parties.has(guest.partyId)) parties.set(guest.partyId, guest);
+  }
+  const list = document.getElementById("noisePartyActions");
+  const key = [...parties.values()].map(guest => `${guest.partyId}:${guest.table}:${guest.quietFor > 0}`).join("|");
+  if (list.dataset.key !== key || !list.innerHTML) {
+    list.dataset.key = key;
+    list.innerHTML = [...parties.values()].map(guest =>
+      `<button id="noiseParty-${guest.partyId}" onclick="askPartyQuiet(${guest.id})" title="Ask ${esc(guest.name)}'s party to quiet down; costs 5 mood per guest"></button>`).join("") || '<p class="muted">No loud parties to quiet down.</p>';
+  }
+  for (const guest of parties.values()) {
+    const button = document.getElementById(`noiseParty-${guest.partyId}`);
+    if (!button) continue;
+    button.disabled = guest.quietFor > 0;
+    const label = guest.quietFor > 0 ? `T${guest.table + 1} · quiet ${Math.ceil(guest.quietFor)}s` : `Quiet T${guest.table + 1} · 12s`;
+    if (button.textContent !== label) button.textContent = label;
+  }
 }
 
 function connectionKey(effect) {
@@ -2419,7 +2528,7 @@ function updateCustomers(dt) {
       c.timer += dt;
 
       // Noise affects customers differently
-      if (noise > traits.noiseTolerance) {
+      if (noiseAtTable(c.table, noise) > traits.noiseTolerance) {
         c.cause = "the café was too noisy";
         c.happiness -= 4 * dt;
 
@@ -2428,6 +2537,11 @@ function updateCustomers(dt) {
           effects.noiseComplaints++;
           addEvent(`A ${c.type} thinks the café is too noisy!`, true);
         }
+      }
+
+      if (c.type === "social" && c.table === quietTable) {
+        c.happiness -= 1.2 * dt;
+        c.cause = "the quiet table did not suit their conversation";
       }
 
       if (c.type === "student" && cafe.wifi > 0) {
@@ -2722,7 +2836,7 @@ function drawRoomAtmosphere(context) {
   context.fillRect(40, 218, 920, 300);
   const sources = new Map();
   for (const c of customers.filter(isSeated)) {
-    if (c.type === "social" && !(c.quietFor > 0)) sources.set(c.table, (sources.get(c.table) || 0) + 1);
+    if (c.type === "social" && !(c.quietFor > 0) && c.table !== quietTable) sources.set(c.table, (sources.get(c.table) || 0) + 1);
   }
   for (const [table, count] of sources) {
     const position = tablePositions[table];
@@ -2973,6 +3087,12 @@ function drawCafe(target = canvas, preview = false) {
       context.font = "13px sans-serif";
       context.fillText("🔖", table.x, table.y + 39);
     }
+    if (!preview && index === quietTable) {
+      drawCircle(table.x + artwork.width / 2 - 12, table.y + 87, 12, "#fffaf3", context);
+      context.fillStyle = "#59633d";
+      context.font = "14px sans-serif";
+      context.fillText("🤫", table.x + artwork.width / 2 - 12, table.y + 92);
+    }
     if (!preview && dirtyTables.includes(index)) {
       drawCircle(table.x, table.y, 14, "#fffaf3", context);
       context.textAlign = "center";
@@ -3152,7 +3272,7 @@ function drawCustomers() {
     }
     if (c.type === "social") {
       ctx.font = "14px sans-serif";
-      ctx.fillText(c.quietFor > 0 ? "🤫" : "♫", c.x + 29, c.y + 5);
+      ctx.fillText(c.quietFor > 0 || c.table === quietTable ? "🤫" : "♫", c.x + 29, c.y + 5);
     }
     drawNeighbourReaction(c);
     if (c.id === selectedCustomer || ticket?.state === "carried") {
@@ -3265,12 +3385,16 @@ function updateIdentityBar() {
 }
 
 function updateLiveStats() {
+  noise = roomNoise();
+  renderNoiseControls();
   renderOperations();
   updateRoomInsights();
   updateIdentityBar();
   updateConcerns();
   updateCarryingBanner();
-  document.getElementById("liveNoiseLabel").textContent = noise > 8 ? "Loud" : noise > 4 ? "Lively" : "Quiet";
+  document.getElementById("liveNoiseLabel").textContent = `${noise} · ${noise > 8 ? "Loud" : noise > 4 ? "Lively" : "Quiet"}${walkInsHeldFor > 0 ? ` · 🚪 ${Math.ceil(walkInsHeldFor)}s` : ""}`;
+  document.getElementById("roomStatus").dataset.level = noise > 8 ? "loud" : "calm";
+  document.getElementById("roomStatus").setAttribute("aria-label", `Room noise ${noise}. Open noise controls.`);
   document.getElementById("time").textContent = Math.ceil(Math.max(0, timeLeft));
   document.getElementById("sales").textContent = sales;
   document.getElementById("served").textContent = Object.values(customerSpending).reduce((sum, group) => sum + group.served, 0);
@@ -3475,21 +3599,25 @@ function seatingForecast(party, table) {
     }
   }
   const beforeNoise = roomNoise(), projectedNoise = roomNoise([...existing, ...ghosts]);
-  const noisy = projectedNoise > customerTypes[party.type].noiseTolerance;
-  if (noisy) notes.set("noise", `Room noise ${projectedNoise} exceeds this party's comfort (${customerTypes[party.type].noiseTolerance}); mood falls while drinking.`);
-  const affected = existing.filter(c => beforeNoise <= customerTypes[c.type].noiseTolerance &&
-    projectedNoise > customerTypes[c.type].noiseTolerance);
+  const tableNoise = noiseAtTable(table, projectedNoise);
+  const noisy = tableNoise > customerTypes[party.type].noiseTolerance;
+  if (noisy) notes.set("noise", `Noise at this table (${tableNoise}) exceeds this party's comfort (${customerTypes[party.type].noiseTolerance}); mood falls while drinking.`);
+  if (table === quietTable) notes.set("quiet", party.type === "social" ? "Quiet table: no social buzz; social guests lose 1.2 mood/s." : "Quiet table: 4 less noise and less distraction from neighbours.");
+  const affected = existing.filter(c => noiseAtTable(c.table, beforeNoise) <= customerTypes[c.type].noiseTolerance &&
+    noiseAtTable(c.table, projectedNoise) > customerTypes[c.type].noiseTolerance);
   if (affected.length) notes.set("room", `Extra room noise would also put ${[...new Set(affected.map(c => c.name))].join(", ")} above their comfort limit.`);
   if (!connections.length) notes.set("space", "No neighbouring table effects within range.");
-  const tone = harm || noisy || affected.length ? "risk" : benefit ? "good" : "neutral";
-  const label = harm ? benefit ? "Company & distraction" : "Distraction risk"
+  const quietSocial = table === quietTable && party.type === "social";
+  const tone = harm || noisy || affected.length || quietSocial ? "risk" : benefit ? "good" : "neutral";
+  const label = quietSocial ? "Quiet table limits conversation" : harm ? benefit ? "Company & distraction" : "Distraction risk"
     : noisy || affected.length ? "Noise risk" : benefit ? "Good company" : "No neighbour effects";
   return { table, blocked: "", tone, label, notes: [...notes.values()], ghosts, connections,
-    rate: rate / party.size, beforeNoise, projectedNoise };
+    rate: rate / party.size, beforeNoise, projectedNoise, tableNoise, quietSocial };
 }
 
 function forecastHeadline(forecast) {
   if (forecast.blocked) return forecast.blocked;
+  if (forecast.quietSocial) return "Social guests lose their buzz and 1.2 mood/s at this quiet table.";
   const distraction = forecast.connections.find(link => link.kind === "annoy");
   if (distraction) return `${distraction.quiet.name} (${distraction.quiet.type}) would be distracted by ${distraction.loud.name}.`;
   if (forecast.projectedNoise > forecast.beforeNoise && forecast.tone === "risk") {
@@ -3632,7 +3760,12 @@ function updateManagerControls(c) {
     select.dataset.options = markup;
   }
   document.getElementById("moveButton").disabled = !options.length;
-  document.getElementById("calmButton").disabled = c.type !== "social" || c.quietFor > 0;
+  const calmButton = document.getElementById("calmButton");
+  calmButton.disabled = c.type !== "social" || c.quietFor > 0 || c.table === quietTable;
+  calmButton.title = c.table === quietTable ? "Already at the quiet table" : c.quietFor > 0
+    ? `${Math.ceil(c.quietFor)}s of quiet remaining` : "12 seconds of quiet; costs 5 mood per guest";
+  const calmLabel = c.table === quietTable ? "🤫 Quiet table" : c.quietFor > 0 ? `🤫 Quiet · ${Math.ceil(c.quietFor)}s` : "🤫 Ask for quiet";
+  if (calmButton.textContent !== calmLabel) calmButton.textContent = calmLabel;
   document.getElementById("refundButton").disabled = c.refunded || cafe.budget + sales < 3;
   document.getElementById("finishButton").disabled = group.some(x => x.state !== "drinking");
   const ticket = tickets.find(t => t.id === c.id);
@@ -3645,7 +3778,7 @@ function updateManagerControls(c) {
   help.disabled = !!managerTask || !!carrying && carrying.id !== c.id && carriedTickets().length >= trayCapacity;
   const issue = c.repeatPending ? `Another ${c.drink} requested. Checkout in ${Math.ceil(remainingVisit(c))}s; serving it won't extend the visit.`
     : c.state === "waiting" ? ""
-    : noise > customerTypes[c.type].noiseTolerance ? "Too noisy here. Lower music or calm a nearby social party."
+    : noiseAtTable(c.table) > customerTypes[c.type].noiseTolerance ? "Too noisy here. Use the noise controls, a quiet table, or a different seat."
     : "";
   document.getElementById("customerIssue").textContent = issue;
 }
@@ -3687,11 +3820,9 @@ function customerAction(action) {
   if (!running) return;
   const c = findCustomer(selectedCustomer);
   if (!c || !isSeated(c)) return;
-  if (action === "calm" && c.type === "social" && !(c.quietFor > 0)) {
-    const beforeNeighbours = neighbourLinks();
-    partyOf(c).forEach(x => { x.quietFor = 12; x.happiness = Math.max(0, x.happiness - 5); addFloat(x, "🤫 12s · −5"); });
-    noteNeighbourRelief(beforeNeighbours, `Asking ${c.name}'s party for quiet`, `you asked ${c.name}'s party for quiet`);
-    managerFeedback(`${c.name}'s party will keep quiet for 12s. Less room and neighbour noise; party mood −5.`);
+  if (action === "calm") {
+    askPartyQuiet(c.id);
+    return;
   } else if (action === "refund" && !c.refunded && cafe.budget + sales >= 3) {
     sales -= 3;
     c.refunded = true;
@@ -3793,6 +3924,7 @@ function openFocus(kind, id = null) {
     previewTable = null;
     document.getElementById("sceneActionPanel").scrollTop = 0;
   }
+  if (kind === "noise") renderNoiseControls();
   selectedCustomer = kind === "customer" ? id : null;
   if (changed) document.querySelector(".more-actions").open = false;
   document.getElementById("focusControls").dataset.key = "";
@@ -3862,6 +3994,7 @@ function updateFocusPanel() {
   scenePanel.hidden = !running || !!guestDrag?.active || focus.kind === "none" || focus.kind === "waiting" || activeProblem ||
     focus.kind === "problem" && coffeeServiceStatus().state !== "supplies";
   scenePanel.dataset.focus = focus.kind;
+  document.getElementById("noiseControls").hidden = focus.kind !== "noise" || scenePanel.hidden;
   const container = document.getElementById("focusControls");
   const title = document.getElementById("orderStatus");
   const detail = document.getElementById("serviceHelp");
@@ -3874,9 +4007,9 @@ function updateFocusPanel() {
   const key = JSON.stringify(focus.kind === "waiting" ? [focus, !!planningParty,
     seated.map(c => [c.id, c.table, c.seatIndex, c.type, c.quietFor > 0]),
     dirtyTables, reservations.map(r => [r.id, r.table, r.state]),
-    cafe.music, cafe.sound, getTrend().noise, !!liveAct, cafe.tables, problems.map(p=>[p.id,p.table])] :
+    cafe.music, cafe.sound, quietTable, getTrend().noise, !!liveAct, cafe.tables, problems.map(p=>[p.id,p.table])] :
     [focus, counterTab, seated.map(c => [c.id, c.table, c.state, c.repeatPending, c.seatIndex, c.type, c.quietFor > 0]),
-    cafe.music, cafe.sound, getTrend().noise, dirtyTables,
+    cafe.music, cafe.sound, quietTable, getTrend().noise, dirtyTables,
     tickets.map(t => [t.id, t.state]), waitingParties.map(p => p.id),
     reservations.map(r => [r.id, r.table, r.state]), requests.map(r => r.id), !!liveAct, cafe.tables,
     stock, managerTask && [managerTask.id,managerTask.kind], deliveries.map(d=>d.id),
@@ -3896,6 +4029,10 @@ function updateFocusPanel() {
   if (focus.kind === "none") {
     title.textContent = "Select a guest, table, or request";
     detail.textContent = "Staff handle orders and delivery. You manage the room.";
+  }
+  if (focus.kind === "noise") {
+    title.textContent = "Room atmosphere";
+    detail.textContent = "";
   }
   if (focus.kind === "machine") {
     title.textContent = "The counter";
@@ -3956,7 +4093,7 @@ function updateConcerns() {
   const list = document.getElementById("concernList");
   const concerns = customers.filter(isSeated).filter(c =>
     c.state === "waiting" && c.timer / c.patience > 0.55 || c.repeatPending && remainingVisit(c) <= 5 || c.happiness < 50 ||
-    c.type === "social" && !(c.quietFor > 0) && noise > 5);
+    c.type === "social" && !(c.quietFor > 0) && c.table !== quietTable && noise > 5);
   const parties = new Set();
   const items = concerns.filter(c => {
     if (parties.has(c.partyId)) return false;
