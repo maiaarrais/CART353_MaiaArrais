@@ -11,6 +11,7 @@ const supplyPacks = {
 };
 const trayCapacity = 3;
 const maxLives = 5;
+const missionRatingBonus = 0.25;
 const staffBreakSeconds = 10;
 const staffBreakRecovery = 40;
 
@@ -181,17 +182,116 @@ const missions = [
   }
 ];
 
-function getMission() {
+const dailyFocuses = {
+  study: { label: "Study café", short: "Study", icon: "▤", type: "student", experience: "Study comfort",
+    description: "Give students a calm place to work, keep them happy, and cover your costs.",
+    hint: "Keep local noise low, distracting neighbours apart, and fix connection problems. Students spend less, so supplies and repeat drinks matter." },
+  lively: { label: "Lively café", short: "Lively", icon: "♫", type: "social", experience: "Social buzz",
+    description: "Bring social tables together for good company and a lively, comfortable room.",
+    hint: "Social groups, nearby social parties and live music build buzz. Keep noise comfortable; quiet requests, quiet tables and sound panels can reduce the good buzz too." },
+  balanced: { label: "Neighbourhood café", short: "Balanced", icon: "☕", type: null, experience: "Visit satisfaction",
+    description: "Welcome a mixed crowd, serve happy visits, and keep the café earning.",
+    hint: "Balance service, noise and different guests' needs. Everyone's completed visit contributes." }
+};
+
+function buildDailyMission() {
   const base = missions[Math.min(cafe.unlocked, missions.length - 1)];
-  // Upgrades persist, so later days need more than the opening-day targets.
-  // Keep the first three days unchanged, then raise targets every three days.
+  const trend = getTrend();
+  const focus = trend.id === "exams" || trend.id === "rain" ? "study"
+    : trend.id === "festival" ? "lively" : "balanced";
+  const config = dailyFocuses[focus];
   const tier = Math.max(0, Math.floor(((Number(cafe.day) || 1) - 1) / 3));
-  return {
-    ...base,
-    sales: Math.min(90, base.sales + tier * 10),
-    happy: Math.min(10, base.happy + tier),
-    satisfaction: Math.min(85, base.satisfaction + tier)
-  };
+  const earnings = Math.min(90, base.sales + tier * 10);
+  const happy = Math.min(10, base.happy + tier);
+  return { ...base, focus, targetType: config.type, title: trend.title,
+    eventId: trend.id, eventBlurb: trend.blurb,
+    description: config.description,
+    hint: config.hint,
+    sales: focus === "study" ? Math.round(earnings * 0.85) : focus === "lively" ? Math.round(earnings * 1.05) : earnings,
+    happy: focus === "balanced" ? happy : Math.max(2, Math.ceil(happy * 0.7)),
+    satisfaction: Math.min(85, base.satisfaction + tier) };
+}
+
+function getMission() {
+  return running && activeDayMission ? activeDayMission : buildDailyMission();
+}
+
+function missionGoalDefinitions(mission) {
+  const config = dailyFocuses[mission.focus] || dailyFocuses.balanced;
+  return [
+    { key: "sales", label: "Earnings", target: mission.sales, prefix: "$", suffix: "" },
+    { key: config.type ? "focusExperience" : "satisfaction", label: config.experience, target: mission.satisfaction, prefix: "", suffix: "%" },
+    { key: config.type ? "focusHappy" : "happy", label: config.type === "student" ? "Happy student visits" : config.type === "social" ? "Happy social visits" : "Happy completed visits", target: mission.happy, prefix: "", suffix: "" }
+  ];
+}
+
+function renderSetupMission() {
+  const mission = getMission();
+  document.getElementById("setupTrendText").textContent = `${mission.eventBlurb} Neighbourhood rating: ★ ${cafe.rating.toFixed(1)}.`;
+  document.getElementById("setupMissionName").textContent = mission.title;
+  document.getElementById("setupMissionGoals").innerHTML = missionGoalDefinitions(mission).map(goal =>
+    `<span><strong>${goal.prefix}${goal.target}${goal.suffix}</strong>${esc(goal.label)}</span>`).join("");
+}
+
+function freshMissionStats() {
+  return Object.fromEntries(Object.keys(customerTypes).map(type => [type, { time: 0, experience: 0, happy: 0 }]));
+}
+
+function recordMissionAtmosphere(inside, neighbours, level, dt) {
+  if (dt <= 0) return;
+  const distraction = new Map(), buzz = new Map();
+  const socialGroups = new Map();
+  for (const guest of inside) {
+    if (guest.type !== "social" || !isSeated(guest) || guest.quietFor > 0 || guest.table === quietTable) continue;
+    const key = guest.partyId ?? guest.id;
+    socialGroups.set(key, (socialGroups.get(key) || 0) + 1);
+  }
+  const disconnected = new Set(problems.filter(problem => problem.kind === "wifi").map(problem => problem.customerId));
+  for (const link of neighbours) {
+    if (link.kind === "annoy") distraction.set(link.quiet.id,
+      (distraction.get(link.quiet.id) || 0) + Math.abs(link.aRate < 0 ? link.aRate : link.bRate));
+    if (link.kind === "buzz" && link.a.type === "social" && link.b.type === "social") {
+      buzz.set(link.a.id, (buzz.get(link.a.id) || 0) + Math.max(0, link.aRate));
+      buzz.set(link.b.id, (buzz.get(link.b.id) || 0) + Math.max(0, link.bRate));
+    }
+  }
+  for (const guest of inside.filter(guest => guest.state === "drinking")) {
+    const stats = missionStats[guest.type];
+    const local = noiseAtTable(guest.table, level);
+    stats.time += dt;
+    if (guest.type === "student") {
+      const comfort = local <= customerTypes.student.noiseTolerance && !disconnected.has(guest.id)
+        ? Math.max(0, 1 - (distraction.get(guest.id) || 0) / 2.5) : 0;
+      stats.experience += comfort * dt;
+    } else if (guest.type === "social") {
+      const comfortable = local >= 3 && local <= customerTypes.social.noiseTolerance &&
+        !(guest.quietFor > 0) && guest.table !== quietTable;
+      if (comfortable) {
+        const groupBuzz = socialGroups.get(guest.partyId ?? guest.id) > 1 ? Math.max(0.3, 1 - cafe.sound * 0.2) : 0;
+        const companyBuzz = Math.min(1, (buzz.get(guest.id) || 0) / 0.8);
+        stats.experience += (liveAct ? 1 : Math.max(groupBuzz, companyBuzz)) * dt;
+      }
+    }
+  }
+}
+
+function missionExperience(mission) {
+  const stats = missionStats[mission.targetType];
+  return stats?.time > 0 ? Math.round(Math.max(0, Math.min(1, stats.experience / stats.time)) * 100) : 0;
+}
+
+function liveMissionMarkup(mission) {
+  const satisfaction = completedVisits ? Math.round(satisfactionTotal / completedVisits) : 0;
+  return `<p class="mission-measure-note">${esc(mission.eventBlurb || "")}</p><div class="live-mission-goals">${missionGoalResults(mission, satisfaction).map(goal =>
+    `<div class="live-mission-goal"><div><span>${esc(goal.label)}</span><strong>${goal.prefix}${goal.value}${goal.suffix} / ${goal.prefix}${goal.target}${goal.suffix}</strong></div><progress max="${goal.target}" value="${Math.min(goal.target, Math.max(0, goal.value))}" aria-label="${esc(goal.label)}"></progress></div>`).join("")}</div><p class="mission-reward">All three goals: +0.25 ★ and one life, up to their limits.</p><p class="mission-measure-note">${mission.focus === "study" ? "Comfort tracks students' time with tolerable local noise, little distraction and no connection problems." : mission.focus === "lively" ? "Buzz tracks social guests' time chatting with their group, enjoying nearby social company or live music, at a comfortable lively volume." : "Satisfaction is measured when guests finish their visits."}</p>`;
+}
+
+function applyDailyRating(won) {
+  const average = reviews.length ? reviews.reduce((sum, review) => sum + review.stars, 0) / reviews.length : null;
+  const reviewed = average === null ? cafe.rating : cafe.rating * 0.6 + average * 0.4;
+  const base = Math.round(reviewed * 100) / 100;
+  cafe.rating = Math.round(Math.max(1, Math.min(5, base + (won ? missionRatingBonus : 0))) * 100) / 100;
+  return Math.max(0, cafe.rating - base);
 }
 
 function showMission() {
@@ -202,11 +302,8 @@ function showMission() {
   document.getElementById("missionDescription").textContent =
     mission.description;
 
-  document.getElementById("missionGoals").innerHTML = `
-    <li><strong>$${mission.sales}</strong><span>earnings</span></li>
-    <li><strong>${mission.satisfaction}%</strong><span>visit satisfaction</span></li>
-    <li><strong>${mission.happy}</strong><span>happy completed visits</span></li>
-  `;
+  document.getElementById("missionGoals").innerHTML = missionGoalDefinitions(mission).map(goal =>
+    `<li><strong>${goal.prefix}${goal.target}${goal.suffix}</strong><span>${esc(goal.label)}</span></li>`).join("");
 
   document.getElementById("missionHint").textContent =
     `${mission.hint}${cafe.day > 3 ? " Targets rise every three days." : ""}`;
@@ -272,6 +369,7 @@ function buyUpgrade(item, cost) {
 }
 
 function updateSetup() {
+  renderSetupMission();
   document.getElementById("budget").textContent = cafe.budget;
   document.getElementById("staffCount").textContent = cafe.staff.length;
   const hire = document.getElementById("hireButton");
@@ -488,6 +586,8 @@ let arrivals;
 let satisfactionTotal;
 let completedVisits;
 let customerSpending = {};
+let activeDayMission = null;
+let missionStats = freshMissionStats();
 
 // --------------------
 // START THE DAY
@@ -507,6 +607,8 @@ async function startDay() {
   }
   document.getElementById("message").textContent = "";
   if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
+  activeDayMission = buildDailyMission();
+  missionStats = freshMissionStats();
 
   customers = [];
   cancelGuestDrag();
@@ -600,13 +702,15 @@ async function startDay() {
   customerSpending = Object.fromEntries(Object.keys(customerTypes).map(type => [type, { served: 0, guests: 0, revenue: 0 }]));
 
   document.getElementById("eventLog").innerHTML = "";
-  const mission = getMission();
+  const mission = activeDayMission;
 
   document.getElementById("activeMission").textContent =
     `Day ${cafe.day} · ${mission.title}`;
   document.getElementById("salesGoal").textContent = mission.sales;
   document.getElementById("happyGoal").textContent = mission.happy;
   document.getElementById("satisfactionGoal").textContent = mission.satisfaction;
+  document.getElementById("happyLabel").textContent = mission.targetType === "student" ? "Happy students" : mission.targetType === "social" ? "Happy social guests" : "Happy visits";
+  document.getElementById("liveSatisfactionLabel").textContent = (dailyFocuses[mission.focus] || dailyFocuses.balanced).experience;
   document.querySelectorAll("#play details").forEach(details => { details.open = false; });
 
   document.getElementById("liveMusic").value = cafe.music;
@@ -2118,12 +2222,11 @@ function renderReviews() {
   const box = document.getElementById("resultReviews");
   const line = document.getElementById("resultRating");
   if (!reviews.length) {
-    line.textContent = "No reviews today. Nobody stayed long enough to write one.";
+    line.textContent = `No reviews today · neighbourhood rating ★ ${cafe.rating.toFixed(1)}`;
     box.innerHTML = "";
     return;
   }
   const average = reviews.reduce((sum, r) => sum + r.stars, 0) / reviews.length;
-  cafe.rating = Math.round((cafe.rating * 0.6 + average * 0.4) * 100) / 100;
   line.textContent = `Today ★ ${average.toFixed(1)} from ${reviews.length} visit${reviews.length === 1 ? "" : "s"} · ` +
     `neighbourhood rating ★ ${cafe.rating.toFixed(1)}`;
 
@@ -2154,6 +2257,7 @@ function recordOutcome(customer, outcome) {
 
   customer.outcomeRecorded = true;
   outcomes[outcome]++;
+  if (outcome === "happy") missionStats[customer.type].happy++;
 
   // Only customers who actually sat down contribute reviews
   satisfactionTotal += Math.max(0, Math.min(100, customer.happiness));
@@ -2368,7 +2472,7 @@ function renderNoiseControls() {
     if (!parties.has(guest.partyId)) parties.set(guest.partyId, guest);
   }
   const list = document.getElementById("noisePartyActions");
-  const key = [...parties.values()].map(guest => `${guest.partyId}:${guest.table}:${guest.quietFor > 0}`).join("|");
+  const key = [...parties.values()].map(guest => `${guest.partyId}:${guest.id}:${guest.table}:${guest.quietFor > 0}`).join("|");
   if (list.dataset.key !== key || !list.innerHTML) {
     list.dataset.key = key;
     list.innerHTML = [...parties.values()].map(guest =>
@@ -2481,6 +2585,7 @@ function applyNeighborEffects(inside, dt) {
     } else a.boost = b.boost = effect.boost;
     addLink(a, b, kind, text);
   }
+  return effects;
 }
 
 function updateCustomers(dt) {
@@ -2490,7 +2595,8 @@ function updateCustomers(dt) {
 
   noise = roomNoise(inside);
 
-  applyNeighborEffects(inside, dt);
+  const neighbours = applyNeighborEffects(inside, dt);
+  recordMissionAtmosphere(inside, neighbours, noise, dt);
 
   customers.forEach(c => {
     c.quietFor = Math.max(0, (c.quietFor || 0) - dt);
@@ -3398,21 +3504,25 @@ function updateLiveStats() {
   document.getElementById("time").textContent = Math.ceil(Math.max(0, timeLeft));
   document.getElementById("sales").textContent = sales;
   document.getElementById("served").textContent = Object.values(customerSpending).reduce((sum, group) => sum + group.served, 0);
-  document.getElementById("happy").textContent = outcomes.happy;
+  const mission = activeDayMission || getMission();
+  const liveSatisfaction = completedVisits > 0 ? Math.round(satisfactionTotal / completedVisits) : 0;
+  const liveGoals = missionGoalResults(mission, liveSatisfaction);
+  const metGoals = liveGoals.filter(goal => goal.value >= goal.target).length;
+  document.getElementById("happy").textContent = mission.targetType ? missionStats[mission.targetType].happy : outcomes.happy;
+  const missionButton = document.getElementById("missionProgressButton");
+  missionButton.textContent = `${(dailyFocuses[mission.focus] || dailyFocuses.balanced).icon} Mission ${metGoals}/3`;
+  missionButton.setAttribute("aria-label", `${mission.title}: ${metGoals} of 3 goals met. Open mission goals.`);
   document.getElementById("turnedAway").textContent = outcomes.turnedAway;
   document.getElementById("noise").textContent = noise;
-  document.getElementById("liveSatisfaction").textContent = completedVisits > 0
-    ? Math.round(satisfactionTotal / completedVisits) : 0;
+  document.getElementById("liveSatisfaction").textContent = mission.targetType ? missionExperience(mission) : liveSatisfaction;
   document.querySelector(".time-stat").classList.toggle("is-urgent", timeLeft <= 10);
   updateCustomerControls();
 }
 
 function missionGoalResults(mission, satisfaction) {
-  return [
-    { label: "Earnings", value: sales, target: mission.sales, prefix: "$", suffix: "" },
-    { label: "Visit satisfaction", value: satisfaction, target: mission.satisfaction, prefix: "", suffix: "%" },
-    { label: "Happy completed visits", value: outcomes.happy, target: mission.happy, prefix: "", suffix: "" }
-  ];
+  const values = { sales, satisfaction, happy: outcomes.happy,
+    focusExperience: missionExperience(mission), focusHappy: missionStats[mission.targetType]?.happy || 0 };
+  return missionGoalDefinitions(mission).map(goal => ({ ...goal, value: values[goal.key] }));
 }
 
 function renderResultGoals(mission, satisfaction) {
@@ -3446,7 +3556,7 @@ function endDay() {
     ? Math.round(satisfactionTotal / completedVisits)
     : 0;
 
-  const mission = getMission();
+  const mission = activeDayMission || getMission();
 
   const metGoals = applyLifeResult(missionGoalResults(mission, satisfaction));
   const won = metGoals === 3;
@@ -3521,7 +3631,12 @@ Regulars: ${arrivals.regular}`;
     story.slice(-12).join("\n") || "A quiet day. Nothing out of the ordinary.";
 
   renderEmergenceSummary();
+  const ratingBonus = applyDailyRating(won);
   renderReviews();
+  const reward = document.getElementById("missionRatingReward");
+  reward.hidden = !won;
+  reward.textContent = ratingBonus > 0 ? `${mission.title} completed · +${ratingBonus.toFixed(2)} ★ mission bonus`
+    : `${mission.title} completed · rating at ★ ${cafe.rating.toFixed(1)}`;
   document.getElementById("resultEffects").textContent +=
     `\nSupply costs: $${operationsStats.restockCost}\nSpecials served: ${operationsStats.specialSold} ($${operationsStats.specialSales})\nTray deliveries: ${operationsStats.trayServed}\nProblems fixed: ${operationsStats.fixed}\nPrepared drinks wasted: ${operationsStats.waste}\nStock carried forward: ${stock.cups} cups, ${stock.milk} milk, ${stock.pastries} pastries`;
   document.getElementById("resultEffects").textContent += "\n\nSpending by crowd (before supply costs):\n" +
@@ -4008,7 +4123,7 @@ function updateFocusPanel() {
     seated.map(c => [c.id, c.table, c.seatIndex, c.type, c.quietFor > 0]),
     dirtyTables, reservations.map(r => [r.id, r.table, r.state]),
     cafe.music, cafe.sound, quietTable, getTrend().noise, !!liveAct, cafe.tables, problems.map(p=>[p.id,p.table])] :
-    [focus, counterTab, seated.map(c => [c.id, c.table, c.state, c.repeatPending, c.seatIndex, c.type, c.quietFor > 0]),
+    [focus, counterTab, focus.kind === "mission" ? missionGoalResults(activeDayMission || getMission(), completedVisits ? Math.round(satisfactionTotal / completedVisits) : 0) : null, seated.map(c => [c.id, c.table, c.state, c.repeatPending, c.seatIndex, c.type, c.quietFor > 0]),
     cafe.music, cafe.sound, quietTable, getTrend().noise, dirtyTables,
     tickets.map(t => [t.id, t.state]), waitingParties.map(p => p.id),
     reservations.map(r => [r.id, r.table, r.state]), requests.map(r => r.id), !!liveAct, cafe.tables,
@@ -4029,6 +4144,12 @@ function updateFocusPanel() {
   if (focus.kind === "none") {
     title.textContent = "Select a guest, table, or request";
     detail.textContent = "Staff handle orders and delivery. You manage the room.";
+  }
+  if (focus.kind === "mission") {
+    const mission = activeDayMission || getMission();
+    title.textContent = mission.title;
+    detail.textContent = "Today's mission · locked until closing";
+    html = liveMissionMarkup(mission);
   }
   if (focus.kind === "noise") {
     title.textContent = "Room atmosphere";
