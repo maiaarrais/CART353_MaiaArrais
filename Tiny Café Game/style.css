@@ -2266,7 +2266,8 @@ select {
   pointer-events: none;
 }
 
-#shopTableCanvas {
+#shopTableCanvas,
+#shopBaristaCanvas {
   width: 100%;
   height: 100%;
   aspect-ratio: auto;

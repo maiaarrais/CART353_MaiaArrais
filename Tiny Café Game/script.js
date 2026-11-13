@@ -501,14 +501,36 @@ const sceneAssets = {
   table: { file: "table.png", crop: [179, 477, 904, 481] },
   smallTable: { file: "smallTable.png", crop: [313, 399, 665, 613] },
   chair: { file: "chair.png", crop: [284, 119, 661, 1051] },
-  chairBack: { file: "chair-back.png", crop: [106, 143, 784, 1309] }
+  chairBack: { file: "chair-back.png", crop: [106, 143, 784, 1309] },
+  student: { file: "student.png", character: true, crop: [604, 134, 603, 1775] },
+  social: { file: "social.png", character: true, crop: [659, 151, 558, 1740] },
+  regular: { file: "regular.png", character: true, crop: [787, 106, 489, 1836] },
+  regular2: { file: "regular2.png", character: true, crop: [748, 123, 535, 1809] },
+  barista: { file: "Barista1.png", character: true, crop: [843, 163, 486, 1684] },
+  barista2: { file: "barista2.png", character: true, crop: [777, 155, 473, 1744] },
+  manager: { file: "Manager.png", character: true, crop: [795, 150, 469, 1760] }
 };
+
+// Cache cropped sprites at scene resolution; source PNGs remain untouched.
+// Explicit bounds also work when index.html is opened through a file URL.
+function prepareCharacterAsset(asset) {
+  const sprite = document.createElement("canvas");
+  sprite.height = 384;
+  sprite.width = Math.round(384 * asset.crop[2] / asset.crop[3]);
+  sprite.getContext("2d").drawImage(asset.image, ...asset.crop, 0, 0, sprite.width, sprite.height);
+  asset.image = sprite;
+  asset.crop = [0, 0, sprite.width, sprite.height];
+}
 
 const failedAssets = [];
 const assetsReady = Promise.all(Object.values(sceneAssets).map(asset =>
   new Promise(resolve => {
     asset.image = new Image();
-    asset.image.onload = resolve;
+    asset.image.onload = () => {
+      try { if (asset.character) prepareCharacterAsset(asset); }
+      catch (error) { failedAssets.push(asset.file); console.warn(error); }
+      resolve();
+    };
     asset.image.onerror = () => {
       failedAssets.push(asset.file);
       resolve();
@@ -2701,7 +2723,7 @@ function guestAtPoint(point) {
   if (!point?.inside) return null;
   return customers.slice().reverse().find(c => isSeated(c) &&
     (Math.hypot(c.x - point.x, c.y - point.y) < 24 ||
-      Math.hypot(c.x - point.x, c.y - 41 - point.y) < 18));
+      (Math.abs(c.x - point.x) < 23 && point.y > c.y - 38 && point.y < c.y + 36)));
 }
 
 function dropTableAt(point) {
@@ -3121,6 +3143,7 @@ function drawCafe(target = canvas, preview = false) {
     if (seatingPreview && !seatingPreview.blocked) drawRelationshipLines(context, seatingPreview.connections, true);
   }
 
+  const team = preview ? cafe.staff : staff;
   // Draw back to front. Seated heads sit between the chair and the tabletop.
   const layers = tablePositions.slice(0, cafe.tables).map((table, index) => ({
     y: table.y + 35, table, index
@@ -3129,8 +3152,17 @@ function drawCafe(target = canvas, preview = false) {
     customers.filter(c => ["walking", "leaving"].includes(c.state))
       .forEach(customer => layers.push({ y: customer.y + 18, customer }));
   }
+  team.forEach((member, index) => layers.push({
+    y: teamMemberPosition(member, index, preview).y,
+    member, memberIndex: index
+  }));
+  layers.push({ y: teamMemberPosition({}, -1, preview).y, member: {}, memberIndex: -1 });
   layers.sort((a, b) => a.y - b.y);
   for (const layer of layers) {
+    if (layer.member) {
+      drawTeamMember(layer.member, layer.memberIndex, context, preview);
+      continue;
+    }
     if (layer.customer) {
       drawCustomerBody(layer.customer, context);
       continue;
@@ -3226,7 +3258,7 @@ function drawCafe(target = canvas, preview = false) {
 
 let artworkLoaded = false;
 assetsReady.then(() => {
-  artworkLoaded = failedAssets.length === 0;
+  artworkLoaded = Object.values(sceneAssets).filter(asset => !asset.character).every(asset => asset.image.complete && asset.image.naturalWidth > 0);
   updateSetupPreview();
 });
 
@@ -3249,11 +3281,32 @@ function drawShopTable() {
   for (const chair of art.chairs.filter(c => c.foreground)) drawChair(table, chair, context);
 }
 
+// Show both barista illustrations on the hiring card.
+function drawShopBaristas() {
+  const target = document.getElementById("shopBaristaCanvas");
+  if (!target || !artworkLoaded) return;
+  const ratio = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+  target.width = Math.round(240 * ratio);
+  target.height = Math.round(164 * ratio);
+  const context = target.getContext("2d");
+  context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  context.clearRect(0, 0, 240, 164);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  for (const [name, x] of [["barista", 87], ["barista2", 153]]) {
+    const asset = sceneAssets[name];
+    if (!asset?.crop || !asset.image.width) continue;
+    const width = 150 * asset.crop[2] / asset.crop[3];
+    drawAsset(name, x - width / 2, 8, width, context);
+  }
+}
+
 function updateSetupPreview() {
   const preview = document.getElementById("setupCanvas");
   if (preview && artworkLoaded) {
     drawCafe(preview, true);
     drawShopTable();
+    drawShopBaristas();
   }
   for (const key of ["tables", "wifi", "sound"]) {
     const label = document.getElementById(`preview${key[0].toUpperCase()}${key.slice(1)}`);
@@ -3263,22 +3316,70 @@ function updateSetupPreview() {
   if (day) day.textContent = cafe.day;
 }
 
+// The supplied art is a single pose: animate the whole illustration gently.
+// This clock advances with simulation time, so pause and game speed apply.
+function drawCharacter(name, x, feetY, height, context, { phase = 0, walking = false, seated = false, mirrored = false, lively = false } = {}) {
+  const asset = sceneAssets[name];
+  if (!asset?.crop || !asset.image.width) return;
+  const time = reducedSceneMotion ? 0 : emergenceClock;
+  const wave = reducedSceneMotion ? 0 : Math.sin(time * (walking ? 12 : lively ? 4 : 2.2) + phase);
+  const width = height * asset.crop[2] / asset.crop[3];
+  const bob = walking ? Math.abs(wave) * 2.5 : wave * 0.6;
+  context.save();
+  context.translate(x, feetY - bob);
+  if (mirrored) context.scale(-1, 1);
+  context.rotate(wave * (walking ? 0.025 : lively ? 0.018 : 0.006));
+  context.scale(1, 1 + wave * 0.004);
+  // Seated portraits stop at the hips; furniture supplies the seated silhouette.
+  const fraction = seated ? 0.6 : 1;
+  context.drawImage(asset.image, 0, 0, asset.image.width, asset.image.height * fraction,
+    -width / 2, -height, width, height * fraction);
+  context.restore();
+}
+
+function characterVariant(name) {
+  return Array.from(name || "").reduce((sum, letter) => sum + letter.codePointAt(0), 0) % 2;
+}
+
 function drawCustomerBody(c, context) {
   const carried = tickets.find(t => t.state === "carried" && t.id === c.id);
   if (selectedCustomer === c.id || carried) drawCircle(c.x, c.y, 24, carried ? "#f4d183" : "#fffaf3", context);
-  drawCircle(c.x, c.y, 18, customerTypes[c.type].color, context);
-  const reaction = neighbourReactions.get(c.id);
-  const other = reaction && findCustomer(reaction.sourceId);
-  const glance = !reducedSceneMotion && reaction && emergenceClock - reaction.at < 2.2 && other ? Math.sign(other.x - c.x) * 2 : 0;
-  drawCircle(c.x - 5 + glance, c.y - 3, 2, "#49372e", context);
-  drawCircle(c.x + 5 + glance, c.y - 3, 2, "#49372e", context);
-  context.strokeStyle = "#49372e";
-  context.lineWidth = 1.5;
-  context.beginPath();
-  if (c.happiness >= 60) context.arc(c.x, c.y + 3, 6, 0, Math.PI);
-  else if (c.happiness < 40) context.arc(c.x, c.y + 11, 5, Math.PI, 2 * Math.PI);
-  else { context.moveTo(c.x - 5, c.y + 7); context.lineTo(c.x + 5, c.y + 7); }
-  context.stroke();
+  const seated = isSeated(c);
+  const walking = ["walking", "leaving"].includes(c.state);
+  const name = c.type === "regular" && characterVariant(c.name) ? "regular2" : c.type;
+  const targetX = c.state === "leaving" ? entrance.x : c.targetX;
+  const table = tablePositions[c.table];
+  drawCharacter(name, c.x, seated ? c.y + 88 : c.y + 24, 122, context, {
+    phase: c.id * 1.7, seated, walking,
+    mirrored: walking ? targetX < c.x : c.x > table.x,
+    lively: c.type === "social" && !c.quietFor && c.table !== quietTable
+  });
+}
+
+function teamMemberPosition(member, index, preview = false) {
+  const isManager = index < 0;
+  const position = isManager ? { x: 890, y: 340 }
+    : member.rest > 0 ? { x: 910, y: 245 + index * 40 }
+    : member.role === "floor" ? { x: 565 + index * 45, y: 260 }
+    : { x: 390 + index * 65, y: 215 };
+  const task = preview ? null : isManager ? managerTask : member.assignment;
+  const problem = problems.find(p => p.id === task?.problemId);
+  const destination = problem ? problemPosition(problem) : position;
+  return { x: destination.x, y: Math.max(210, destination.y), task };
+}
+
+function drawTeamMember(member, index, context, preview = false) {
+  const isManager = index < 0;
+  const { x, y, task } = teamMemberPosition(member, index, preview);
+  drawCharacter(isManager ? "manager" : index % 2 ? "barista2" : "barista", x, y, 114, context,
+    { phase: index + 3, lively: !preview && !!task });
+  if (!preview && (task || member.rest > 0)) {
+    context.textAlign = "center";
+    context.font = "13px sans-serif";
+    drawCircle(x, y - 127, 12, "#fffaf3", context);
+    context.fillStyle = "#49372e";
+    context.fillText(member.rest > 0 ? "☕" : "⋯", x, y - 123);
+  }
 }
 
 function drawDrinkIcon(x, y, drink, fill = 1, context = ctx) {
@@ -3354,7 +3455,7 @@ function drawCustomers() {
       ctx.strokeStyle = remaining > 0.4 ? "#7c8758" : "#b66f51";
       ctx.beginPath(); ctx.arc(c.x, c.y, 22, -Math.PI / 2, -Math.PI / 2 + remaining * 2 * Math.PI); ctx.stroke();
     }
-    const bubbleX = c.x, bubbleY = c.y - 41;
+    const bubbleX = c.x, bubbleY = c.y - 54;
     const showBubble = c.waterFeedback > 0 || lowMood || waiting && (selected || lowPatience || ready);
     const brewing = waiting && ticket?.state === "brewing";
     if (showBubble) drawCircle(bubbleX, bubbleY, 17, "#fffaf3");
