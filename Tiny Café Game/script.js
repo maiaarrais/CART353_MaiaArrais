@@ -146,6 +146,9 @@ function restartWithKeepsake(id) {
   else if (choice?.kind === "wifi" || choice?.kind === "sound") fresh[choice.kind] = 1;
   if (choice) fresh.keepsake = { kind: choice.kind, name: choice.title };
   cafe = fresh;
+  tablePositions = createTableLayout();
+  cafe.tableLayout = tablePositions;
+  cafe.tableLayoutVersion = 2;
   lastLifeChange = 0;
   saveGame();
   showScreen("scenario");
@@ -460,14 +463,48 @@ const customerTypes = {
 
 // All scene positions use the room's original proportions, independent of screen DPI.
 const sceneSize = { width: 1000, height: 542 };
-const tablePositions = [
-  { x: 215, y: 270 },
-  { x: 450, y: 405 },
-  { x: 685, y: 405 },
-  { x: 215, y: 405 },
-  { x: 685, y: 270 },
-  { x: 450, y: 270 }
+// Staggered furniture groups leave a central service aisle and the door clear.
+// Small variations give each café its own arrangement, saved across reloads.
+const layoutAnchors = [
+  { x: 195, y: 235 }, { x: 765, y: 410 },
+  { x: 470, y: 385 }, { x: 450, y: 238 },
+  { x: 690, y: 270 }, { x: 210, y: 390 }
 ];
+function tableFootprint(position, index) {
+  const art = typeof index === "object" ? index : tableArtwork(index);
+  const parts = [{ x: -art.width / 2, y: -12, w: art.width,
+    h: art.width * sceneAssets[art.name].crop[3] / sceneAssets[art.name].crop[2] },
+    ...art.chairs.map(chair => ({ x: chair.x, y: chair.y, w: chair.width,
+      h: chair.width * sceneAssets[chair.asset || "chair"].crop[3] / sceneAssets[chair.asset || "chair"].crop[2] }))];
+  return { left: position.x + Math.min(...parts.map(p => p.x)),
+    right: position.x + Math.max(...parts.map(p => p.x + p.w)),
+    top: position.y + Math.min(...parts.map(p => p.y)),
+    bottom: position.y + Math.max(...parts.map(p => p.y + p.h)) };
+}
+function validTableLayout(positions) {
+  if (!Array.isArray(positions) || positions.length !== 6 ||
+      positions.some(p => !Number.isFinite(p?.x) || !Number.isFinite(p?.y))) return false;
+  const bounds = positions.map(tableFootprint);
+  return bounds.every((a, i) => a.left >= 85 && a.right <= 880 && a.top >= 190 && a.bottom <= 500 &&
+    // The upper-right floor belongs to the counter and entrance.
+    !(a.right > 365 && a.left < 765 && a.top < 225) &&
+    !(a.right > 800 && a.top < 300) &&
+    bounds.slice(i + 1).every(b => a.right + 18 <= b.left || b.right + 18 <= a.left ||
+      a.bottom + 18 <= b.top || b.bottom + 18 <= a.top));
+}
+function createTableLayout(random = Math.random) {
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const positions = layoutAnchors.map(p => ({
+      x: p.x + Math.round((random() - 0.5) * 24),
+      y: p.y + Math.round((random() - 0.5) * 8)
+    }));
+    if (validTableLayout(positions)) return positions;
+  }
+  return layoutAnchors.map(p => ({ ...p }));
+}
+// Initialized after asset metadata, used by every scene and interaction.
+let tablePositions;
+
 
 const entrance = { x: 820, y: 238 };
 // Use the machine already painted into the room; overlaying another duplicates it.
@@ -506,10 +543,20 @@ const sceneAssets = {
   social: { file: "social.png", character: true, crop: [659, 151, 558, 1740] },
   regular: { file: "regular.png", character: true, crop: [787, 106, 489, 1836] },
   regular2: { file: "regular2.png", character: true, crop: [748, 123, 535, 1809] },
+  socialBack: { file: "social-back.png", character: true, crop: [456, 92, 335, 1104] },
+  studentBack: { file: "student-back.png", character: true, crop: [284, 40, 454, 1469] },
+  regularBack: { file: "regular-back.png", character: true, crop: [472, 57, 289, 1143] },
+  regular2Back: { file: "regular2-back.png", character: true, crop: [462, 62, 307, 1133] },
   barista: { file: "Barista1.png", character: true, crop: [843, 163, 486, 1684] },
   barista2: { file: "barista2.png", character: true, crop: [777, 155, 473, 1744] },
   manager: { file: "Manager.png", character: true, crop: [795, 150, 469, 1760] }
 };
+
+tablePositions = cafe.tableLayoutVersion === 2 && validTableLayout(cafe.tableLayout)
+  ? cafe.tableLayout : createTableLayout();
+cafe.tableLayout = tablePositions;
+cafe.tableLayoutVersion = 2;
+saveGame();
 
 // Cache cropped sprites at scene resolution; source PNGs remain untouched.
 // Explicit bounds also work when index.html is opened through a file URL.
@@ -3017,11 +3064,12 @@ function withAlpha(hex, a) {
 
 // A crisp floor marker stays readable against the painted wood.
 function drawTableGlow(context, table, artwork, color, strong) {
-  const rx = artwork.width / 2 + 30;
-  const ry = 47;
+  const bounds = tableFootprint(table, artwork);
+  const rx = (bounds.right - bounds.left) / 2 + 8;
+  const ry = (bounds.bottom - bounds.top) / 2 + 8;
   context.save();
   context.beginPath();
-  context.ellipse(table.x, table.y + 52, rx, ry, 0, 0, Math.PI * 2);
+  context.ellipse((bounds.left + bounds.right) / 2, (bounds.top + bounds.bottom) / 2, rx, ry, 0, 0, Math.PI * 2);
   context.fillStyle = withAlpha(color, strong ? 0.18 : 0.09);
   context.fill();
   context.strokeStyle = "#fffaf0";
@@ -3132,10 +3180,38 @@ setupCanvasEl.addEventListener("click", event => {
   setTimeout(updateSetupPreview, 1450);
 });
 
+// Purchases have a visible home in both the shop preview and the live room.
+function drawRoomUpgrades(context) {
+  context.save();
+  context.strokeStyle = "#49372e";
+  context.lineWidth = 1.5;
+  if (cafe.sound > 0) {
+    for (let i = 0; i < cafe.sound; i++) {
+      context.fillStyle = i % 2 ? "#9c7653" : "#788052";
+      context.beginPath(); context.roundRect(150 + i * 43, 38, 34, 40, 5); context.fill(); context.stroke();
+      context.strokeStyle = "#49372e55";
+      for (let x = 157 + i * 43; x < 181 + i * 43; x += 6) {
+        context.beginPath(); context.moveTo(x, 43); context.lineTo(x, 73); context.stroke();
+      }
+      context.strokeStyle = "#49372e";
+    }
+  }
+  if (cafe.wifi > 0) {
+    context.fillStyle = "#f5ead6";
+    context.beginPath(); context.roundRect(655, 53, 40, 17, 4); context.fill(); context.stroke();
+    for (const x of [660, 690]) {
+      context.beginPath(); context.moveTo(x, 53); context.lineTo(x, 39); context.stroke();
+    }
+    for (let i = 0; i < cafe.wifi; i++) drawCircle(663 + i * 8, 62, 2, "#788052", context);
+  }
+  context.restore();
+}
+
 function drawCafe(target = canvas, preview = false) {
   const context = prepareSceneCanvas(target);
   context.clearRect(0, 0, sceneSize.width, sceneSize.height);
   drawAsset("room", 0, 0, sceneSize.width, context);
+  drawRoomUpgrades(context);
   const seatingPreview = !preview && activeSeatingPreview();
   if (!preview) {
     drawRoomAtmosphere(context);
@@ -3316,9 +3392,36 @@ function updateSetupPreview() {
   if (day) day.textContent = cafe.day;
 }
 
-// The supplied art is a single pose: animate the whole illustration gently.
-// This clock advances with simulation time, so pause and game speed apply.
-function drawCharacter(name, x, feetY, height, context, { phase = 0, walking = false, seated = false, mirrored = false, lively = false } = {}) {
+// A seated pose keeps the original artwork, including both shoes. The lap is
+// foreshortened separately from the shins rather than cutting off the sprite.
+function drawSeatedCharacter(name, x, seatY, height, context, mirrored) {
+  const asset = sceneAssets[name];
+  if (!asset?.image.width) return;
+  const width = height * asset.crop[2] / asset.crop[3];
+  const bodyEnd = 0.57, knee = 0.77;
+  const torso = height * bodyEnd;
+  const lap = height * 0.075;
+  const shins = height * 0.27;
+  const inward = name.endsWith("Back") ? 0 : name === "regular" ? -5 : 5;
+  const sw = asset.image.width, sh = asset.image.height;
+  context.save();
+  context.translate(x, seatY);
+  if (mirrored) context.scale(-1, 1);
+  // Both legs remain connected through a shallow, angled lap on the cushion.
+  context.save();
+  context.transform(1, 0, inward / lap, 1, 0, 0);
+  context.drawImage(asset.image, 0, sh * bodyEnd, sw, sh * (knee - bodyEnd),
+    -width / 2, 0, width, lap + 0.5);
+  context.restore();
+  context.drawImage(asset.image, 0, sh * knee, sw, sh * (1 - knee),
+    -width / 2 + inward, lap, width, shins);
+  context.drawImage(asset.image, 0, 0, sw, sh * bodyEnd,
+    -width / 2, -torso, width, torso + 0.5);
+  context.restore();
+}
+
+// The clock follows simulation time, so pause and game speed also affect motion.
+function drawCharacter(name, x, feetY, height, context, { phase = 0, walking = false, mirrored = false, lively = false } = {}) {
   const asset = sceneAssets[name];
   if (!asset?.crop || !asset.image.width) return;
   const time = reducedSceneMotion ? 0 : emergenceClock;
@@ -3330,10 +3433,8 @@ function drawCharacter(name, x, feetY, height, context, { phase = 0, walking = f
   if (mirrored) context.scale(-1, 1);
   context.rotate(wave * (walking ? 0.025 : lively ? 0.018 : 0.006));
   context.scale(1, 1 + wave * 0.004);
-  // Seated portraits stop at the hips; furniture supplies the seated silhouette.
-  const fraction = seated ? 0.6 : 1;
-  context.drawImage(asset.image, 0, 0, asset.image.width, asset.image.height * fraction,
-    -width / 2, -height, width, height * fraction);
+  context.drawImage(asset.image, 0, 0, asset.image.width, asset.image.height,
+    -width / 2, -height, width, height);
   context.restore();
 }
 
@@ -3344,14 +3445,29 @@ function characterVariant(name) {
 function drawCustomerBody(c, context) {
   const carried = tickets.find(t => t.state === "carried" && t.id === c.id);
   if (selectedCustomer === c.id || carried) drawCircle(c.x, c.y, 24, carried ? "#f4d183" : "#fffaf3", context);
-  const seated = isSeated(c);
+  const seated = isSeated(c) || c.state === "preview";
   const walking = ["walking", "leaving"].includes(c.state);
   const name = c.type === "regular" && characterVariant(c.name) ? "regular2" : c.type;
-  const targetX = c.state === "leaving" ? entrance.x : c.targetX;
   const table = tablePositions[c.table];
-  drawCharacter(name, c.x, seated ? c.y + 88 : c.y + 24, 122, context, {
-    phase: c.id * 1.7, seated, walking,
-    mirrored: walking ? targetX < c.x : c.x > table.x,
+  const inwardLeft = c.x > table.x;
+  // The regular's source art faces left; the other guests face right.
+  const mirrored = name === "regular" ? !inwardLeft : inwardLeft;
+  if (seated) {
+    const chair = tableArtwork(c.table).chairs[c.seatIndex];
+    const asset = sceneAssets[chair.asset || "chair"];
+    const chairHeight = chair.width * asset.crop[3] / asset.crop[2];
+    const cushionY = table.y + chair.y + chairHeight * 0.47;
+    // Front-row chairs face into the room: show the guest's back above the
+    // chair backrest. Mirroring a front portrait cannot produce a rear view.
+    const seatedName = chair.foreground ? `${name}Back` : name;
+    drawSeatedCharacter(seatedName, c.x, cushionY, 122, context, chair.foreground ? false : mirrored);
+    return;
+  }
+  const targetX = c.state === "leaving" ? entrance.x : c.targetX;
+  const phase = Number.isFinite(c.id) ? c.id * 1.7 : characterVariant(c.name) * 1.7;
+  drawCharacter(name, c.x, c.y + 24, 122, context, {
+    phase, walking,
+    mirrored: name === "regular" ? targetX >= c.x : targetX < c.x,
     lively: c.type === "social" && !c.quietFor && c.table !== quietTable
   });
 }
