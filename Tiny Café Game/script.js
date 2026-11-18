@@ -28,7 +28,7 @@ const startingCafe = {
   stock: { ...openingStock },
   special: { kind: "none", price: 4, limit: 5 },
   rep: { student: 0, social: 0, regular: 0 },
-  staff: [{ name: "Juno", speed: 1.3, sloppy: 0.25, warmth: 0 }],
+  staff: [{ name: "Juno", sprite: "barista", speed: 1.3, sloppy: 0.25, warmth: 0 }],
   regulars: {},  // returning customers remember how they were treated
   rating: 3,     // neighbourhood rating, smoothed from daily reviews
   trend: null    // today's neighbourhood trend: { day, id }
@@ -379,7 +379,10 @@ function updateSetup() {
   hire.disabled = cafe.staff.length >= 3 || cafe.budget < 60;
   hire.dataset.state = cafe.staff.length >= 3 ? "full" : hire.disabled ? "unaffordable" : "available";
   document.getElementById("staffPrice").textContent = cafe.staff.length >= 3 ? "Full" : "$60";
-  hire.setAttribute("aria-label", cafe.staff.length >= 3 ? "Staff limit reached" : cafe.budget < 60 ? "Hire a barista for 60 dollars; insufficient funds" : "Hire a barista for 60 dollars");
+  const candidate = nextHire();
+  document.getElementById("shopBaristaName").textContent = candidate ? `Hire ${candidate.name}` : "Team complete";
+  document.getElementById("shopBaristaTraits").textContent = candidate ? describeStaff(candidate) : "Everyone is hired";
+  hire.setAttribute("aria-label", !candidate ? "Staff limit reached" : `Hire ${candidate.name} for 60 dollars; ${describeStaff(candidate)}${cafe.budget < 60 ? "; insufficient funds" : ""}`);
 
   ["tables", "wifi", "sound"].forEach(item => {
     document.getElementById(item).textContent = cafe[item];
@@ -549,6 +552,7 @@ const sceneAssets = {
   regular2Back: { file: "regular2-back.png", character: true, crop: [462, 62, 307, 1133] },
   barista: { file: "Barista1.png", character: true, crop: [843, 163, 486, 1684] },
   barista2: { file: "barista2.png", character: true, crop: [777, 155, 473, 1744] },
+  baristaKai: { file: "barista2.png", character: true, tint: "rgba(70, 125, 145, 0.3)", crop: [777, 155, 473, 1744] },
   manager: { file: "Manager.png", character: true, crop: [795, 150, 469, 1760] }
 };
 
@@ -565,23 +569,54 @@ function prepareCharacterAsset(asset) {
   sprite.height = 384;
   sprite.width = Math.round(384 * asset.crop[2] / asset.crop[3]);
   sprite.getContext("2d").drawImage(asset.image, ...asset.crop, 0, 0, sprite.width, sprite.height);
+  if (asset.tint) {
+    const context = sprite.getContext("2d");
+    context.globalCompositeOperation = "source-atop";
+    context.fillStyle = asset.tint;
+    context.fillRect(0, sprite.height * 0.35, sprite.width, sprite.height * 0.34);
+    context.globalCompositeOperation = "source-over";
+  }
   asset.image = sprite;
   asset.crop = [0, 0, sprite.width, sprite.height];
+}
+
+// A missing portrait should not prevent opening the café.
+function fallbackCharacter(asset) {
+  const sprite = document.createElement("canvas");
+  sprite.width = 128; sprite.height = 384;
+  const context = sprite.getContext("2d");
+  const back = asset.file.includes("-back");
+  context.fillStyle = "#49372e";
+  context.fillRect(34, 260, 24, 119); context.fillRect(70, 260, 24, 119);
+  context.fillStyle = "#7c8758";
+  context.beginPath(); context.roundRect(15, 112, 98, 175, 25); context.fill();
+  context.fillStyle = back ? "#62432f" : "#ddb48e";
+  context.beginPath(); context.ellipse(64, 60, 48, 58, 0, 0, Math.PI * 2); context.fill();
+  if (!back) {
+    context.fillStyle = "#49372e";
+    for (const x of [48, 80]) { context.beginPath(); context.arc(x, 60, 4, 0, Math.PI * 2); context.fill(); }
+    context.beginPath(); context.arc(64, 80, 12, 0, Math.PI); context.stroke();
+  }
+  asset.image = sprite;
+  asset.crop = [0, 0, 128, 384];
+  asset.fallback = true;
 }
 
 const failedAssets = [];
 const assetsReady = Promise.all(Object.values(sceneAssets).map(asset =>
   new Promise(resolve => {
+    const fail = error => {
+      if (asset.character) fallbackCharacter(asset);
+      else failedAssets.push(asset.file);
+      console.warn(`Artwork unavailable: ${asset.file}`, error || "Using fallback");
+      resolve();
+    };
     asset.image = new Image();
     asset.image.onload = () => {
-      try { if (asset.character) prepareCharacterAsset(asset); }
-      catch (error) { failedAssets.push(asset.file); console.warn(error); }
-      resolve();
+      try { if (asset.character) prepareCharacterAsset(asset); resolve(); }
+      catch (error) { fail(error); }
     };
-    asset.image.onerror = () => {
-      failedAssets.push(asset.file);
-      resolve();
-    };
+    asset.image.onerror = () => fail();
     asset.image.src = `assets/${asset.file}`;
   })
 ));
@@ -641,6 +676,7 @@ let staff = [];     // today's working baristas
 let stock = { ...cafe.stock };
 let dailySpecial = null;
 let managerTask = null;
+let managerActor = {};
 let deliveries = [];
 let problems = [];
 let operationNumber = 0;
@@ -722,6 +758,7 @@ async function startDay() {
   stock = { ...cafe.stock };
   dailySpecial = { ...cafe.special, active: cafe.special.kind !== "none", remaining: cafe.special.limit, sold: 0 };
   managerTask = null;
+  managerActor = {};
   deliveries = [];
   problems = [];
   operationNumber = 0;
@@ -953,9 +990,13 @@ const drinks = {
 };
 const slotCount = 2;
 const hireable = [
-  { name: "Rue", speed: 0.8, sloppy: 0.05, warmth: 1.5 },
-  { name: "Kai", speed: 1.1, sloppy: 0.12, warmth: 0.7 }
+  { name: "Rue", sprite: "barista2", speed: 0.8, sloppy: 0.05, warmth: 1.5 },
+  { name: "Kai", sprite: "baristaKai", speed: 1.1, sloppy: 0.12, warmth: 0.7 }
 ];
+const nextHire = () => cafe.staff.length >= 3 ? undefined : hireable.find(h => !cafe.staff.some(m => m.name === h.name));
+function staffSprite(member) {
+  return member.sprite || ({ Juno: "barista", Rue: "barista2", Kai: "baristaKai" }[member.name]) || "barista";
+}
 const findCustomer = id => customers.find(c => c.id === id);
 const needsDrink = c => !!c && (c.state === "waiting" || c.state === "drinking" && c.repeatPending);
 const drinkPrice = (drink, type = "regular") => Math.max(1,
@@ -1091,7 +1132,7 @@ function useCoffeeMachine() {
 function serve(customer, by) {
   if (by && (by.rest > 0 || by.assignment)) return;
   const ticket = tickets.find(t => t.id === customer.id);
-  if (!ticket || !["ready", "carried"].includes(ticket.state) || !needsDrink(customer)) return;
+  if (!ticket || !(by ? ["ready", "staff-carried"] : ["ready", "carried"]).includes(ticket.state) || !needsDrink(customer)) return;
   const repeat = !!ticket.repeat;
   tickets = tickets.filter(t => t !== ticket);
   customer.state = "drinking";
@@ -1212,7 +1253,7 @@ function updateStaffCard(member, index) {
     energy.title = `${chance}% mistake chance; fatigue increases it below 60% energy`;
   }
   const task = document.getElementById(`staffTask-${index}`);
-  if (task) task.textContent = member.rest > 0 ? "On break" : member.assignment ? "Helping with a problem" : member.task || "Ready";
+  if (task) task.textContent = member.rest > 0 ? "On break" : member.scene?.moving ? (member.job?.stage === "table" && member.job.kind === "deliver" ? "☕ Bringing drinks" : member.job || member.assignment ? "Walking to task" : "Returning to station") : member.assignment ? "Helping with a problem" : member.task || "Ready";
   const button = document.getElementById(`staff-rest-${index}`);
   if (button) {
     button.disabled = member.rest > 0 || !!member.assignment || member.energy >= 100;
@@ -1239,6 +1280,7 @@ function restStaff(index) {
     managerFeedback(`${member.name} must finish the assigned task before resting.`);
     return false;
   }
+  cancelStaffJob(member);
   member.rest = staffBreakSeconds;
   member.askedBreak = true;
   member.task = "On break";
@@ -1256,6 +1298,7 @@ function restStaff(index) {
 
 function toggleRole(index) {
   if (!running || !staff[index]) return;
+  cancelStaffJob(staff[index]);
   staff[index].role = staff[index].role === "counter" ? "floor" : "counter";
   addEvent(`${staff[index].name} moves to the ${staff[index].role}.`);
   renderStaff();
@@ -1284,52 +1327,31 @@ function updateStaff(dt) {
     m.cd -= dt * m.speed * (0.4 + 0.6 * m.energy / 100);
     updateStaffCard(m, i);
     if (m.assignment) {
-      if (task) task.textContent = "Helping with a problem";
+      if (task) task.textContent = m.scene?.moving ? "Walking to help" : "Helping with a problem";
+      return;
+    }
+    if (m.job) {
+      updateStaffJob(m, dt);
+      updateStaffCard(m, i);
       return;
     }
     if (m.cd > 0) return;
     m.cd = 2;
-    let jobEffort = 4;
-    const jobs = {
-      order: () => {
-        const c = customers.find(x => needsDrink(x) && !tickets.some(t => t.id === x.id));
-        return c ? takeOrder(c, m) : false;
-      },
-      deliver: () => {
-        const first = nextServiceTicket("ready");
-        const customer = first && findCustomer(first.id);
-        if (!customer) return false;
-        const batch = [first, ...tickets.filter(ticket => ticket !== first && ticket.state === "ready" &&
-          findCustomer(ticket.id)?.table === customer.table && needsDrink(findCustomer(ticket.id)))]
-          .slice(0, trayCapacity);
-        batch.forEach(ticket => serve(findCustomer(ticket.id), m));
-        jobEffort = 4 + Math.max(0, batch.length - 1) * 2;
-        return true;
-      },
-      clean: () => {
-        const cleanable = dirtyTables.filter(t => !customers.some(c => c.table === t && stillInside(c)) &&
-          !problems.some(p => p.kind === "spill" && p.table === t));
-        if (!cleanable.length) return false;
-        // Tables with a booking coming up get cleaned first.
-        const booked = reservations.filter(r => ["booked", "blocked"].includes(r.state)).map(r => r.table);
-        const target = cleanable.find(t => booked.includes(t)) ?? cleanable[0];
-        dirtyTables = dirtyTables.filter(t => t !== target);
-        addEvent(`${m.name} cleaned a table.`);
-        return true;
-      }
-    };
-    const job = (m.role === "floor" ? ["deliver", "clean", "order"] : ["order", "deliver", "clean"]).find(k => jobs[k]());
-    if (job) m.energy = Math.max(0, m.energy - jobEffort);
-    const service = coffeeServiceStatus();
-    m.task = job ? { deliver: "☕ Delivering", clean: "🧽 Cleaning", order: "📝 Taking orders" }[job]
-      : service.state !== "ready" ? service.label : "Ready";
+    const job = chooseStaffJob(m);
+    if (job) {
+      m.job = job;
+      m.task = job.kind === "deliver" ? "Collecting drinks" : job.kind === "order" ? "Walking to take an order" : "Walking to clean";
+    } else {
+      const service = coffeeServiceStatus();
+      m.task = service.state !== "ready" ? service.label : "Ready";
+    }
     updateStaffCard(m, i);
   });
 }
 
 function hireStaff() {
   const msg = document.getElementById("message");
-  const next = hireable.find(h => !cafe.staff.some(m => m.name === h.name));
+  const next = nextHire();
   if (!next) { msg.textContent = "Your team is full."; return; }
   if (cafe.budget < 60) { msg.textContent = "Not enough money!"; return; }
   cafe.budget -= 60;
@@ -1586,6 +1608,7 @@ function handleProblem(id, delegate = false) {
   if (delegate) {
     const worker = staff.find(m => m.rest <= 0 && !m.assignment);
     if (!worker) { managerFeedback("No available staff. Handle it yourself or wait for a break to end."); return; }
+    cancelStaffJob(worker);
     worker.assignment = { problemId: id, time: 7, total: 7 };
     problem.assigned = worker.name;
     renderStaff();
@@ -1649,7 +1672,7 @@ function updateOperations(dt) {
   walkInsHeldFor = Math.max(0, walkInsHeldFor - dt);
   walkInHoldCooldown = Math.max(0, walkInHoldCooldown - dt);
   if (managerTask) {
-    managerTask.time -= dt;
+    if (managerActor.scene?.arrived) managerTask.time -= dt;
     if (managerTask.time <= 0) {
       const task = managerTask; managerTask = null;
       if (task.kind === "restock") {
@@ -1667,7 +1690,7 @@ function updateOperations(dt) {
   for (const m of staff) {
     if (!m.assignment || m.rest > 0) continue;
     const assignment = m.assignment;
-    assignment.time -= dt;
+    if (m.scene?.arrived) assignment.time -= dt;
     if (assignment.time <= 0 || !problems.some(p => p.id === assignment.problemId)) {
       if (assignment.time <= 0) resolveProblem(assignment.problemId);
       m.assignment = null; m.energy = Math.max(0, m.energy - 4); renderStaff();
@@ -1801,7 +1824,7 @@ function renderOperations() {
   if (managerTask) {
     const label = managerTask.kind === "restock" ? `Restocking ${supplyPacks[managerTask.resource].name.toLowerCase()}`
       : problems.find(p => p.id === managerTask.problemId)?.kind === "spill" ? "Cleaning spill" : "Handling a café problem";
-    document.getElementById("managerTaskName").textContent = `${label} · ${Math.max(0,Math.ceil(managerTask.time))}s`;
+    document.getElementById("managerTaskName").textContent = `${managerActor.scene?.moving ? "Walking · " : ""}${label} · ${Math.max(0,Math.ceil(managerTask.time))}s`;
     document.getElementById("managerTaskProgress").value = 100 * (1 - managerTask.time / managerTask.total);
   }
   const issueMarkup = problems.map(p=>`<button class="attention-item blocked" onclick="openFocus('problem',${p.id})"><strong>${esc(p.title)}</strong><small>${p.assigned ? `${esc(p.assigned)} is handling it` : "Needs help"}</small></button>`).join("") || '<p class="empty muted">No spills or equipment problems.</p>';
@@ -2768,9 +2791,19 @@ function canvasPoint(event) {
 
 function guestAtPoint(point) {
   if (!point?.inside) return null;
-  return customers.slice().reverse().find(c => isSeated(c) &&
-    (Math.hypot(c.x - point.x, c.y - point.y) < 24 ||
-      (Math.abs(c.x - point.x) < 23 && point.y > c.y - 38 && point.y < c.y + 36)));
+  // Match the table and seat drawing order when visible portraits overlap.
+  return customers.filter(isSeated).sort((a, b) =>
+    tablePositions[a.table].y - tablePositions[b.table].y || a.table - b.table ||
+    Number(seatedPose(a).foreground) - Number(seatedPose(b).foreground))
+    .reverse().find(c => {
+      const bounds = guestBounds(c);
+      if (point.x < bounds.left || point.x > bounds.right || point.y < bounds.top || point.y > bounds.bottom) return false;
+      const table = tablePositions[c.table], art = tableArtwork(c.table), asset = sceneAssets[art.name];
+      const tableBottom = table.y - 12 + art.width * asset.crop[3] / asset.crop[2];
+      const hidden = !seatedPose(c).foreground && Math.abs(point.x - table.x) < art.width / 2 &&
+        point.y >= table.y - 12 && point.y <= tableBottom;
+      return !hidden;
+    });
 }
 
 function dropTableAt(point) {
@@ -3369,12 +3402,15 @@ function drawShopBaristas() {
   context.clearRect(0, 0, 240, 164);
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
-  for (const [name, x] of [["barista", 87], ["barista2", 153]]) {
-    const asset = sceneAssets[name];
-    if (!asset?.crop || !asset.image.width) continue;
+  const candidate = nextHire();
+  const portraits = candidate ? [candidate] : cafe.staff;
+  portraits.forEach((member, index) => {
+    const name = staffSprite(member), asset = sceneAssets[name];
+    if (!asset?.crop || !asset.image.width) return;
+    const x = 120 + (index - (portraits.length - 1) / 2) * 55;
     const width = 150 * asset.crop[2] / asset.crop[3];
     drawAsset(name, x - width / 2, 8, width, context);
-  }
+  });
 }
 
 function updateSetupPreview() {
@@ -3394,7 +3430,7 @@ function updateSetupPreview() {
 
 // A seated pose keeps the original artwork, including both shoes. The lap is
 // foreshortened separately from the shins rather than cutting off the sprite.
-function drawSeatedCharacter(name, x, seatY, height, context, mirrored) {
+function drawSeatedCharacter(name, x, seatY, height, context, mirrored, motion = {}) {
   const asset = sceneAssets[name];
   if (!asset?.image.width) return;
   const width = height * asset.crop[2] / asset.crop[3];
@@ -3415,8 +3451,14 @@ function drawSeatedCharacter(name, x, seatY, height, context, mirrored) {
   context.restore();
   context.drawImage(asset.image, 0, sh * knee, sw, sh * (1 - knee),
     -width / 2 + inward, lap, width, shins);
+  // Keep the feet planted while the torso breathes, chats, or leans for a sip.
+  context.save();
+  context.rotate(motion.sway || 0);
+  context.scale(1, 1 + (motion.breath || 0));
   context.drawImage(asset.image, 0, 0, sw, sh * bodyEnd,
     -width / 2, -torso, width, torso + 0.5);
+  if (motion.sip > 0) drawDrinkIcon(width * 0.42, -torso * (0.45 + motion.sip * 0.3), motion.drink, 0.8, context);
+  context.restore();
   context.restore();
 }
 
@@ -3442,59 +3484,265 @@ function characterVariant(name) {
   return Array.from(name || "").reduce((sum, letter) => sum + letter.codePointAt(0), 0) % 2;
 }
 
+function seatedPose(c) {
+  const table = tablePositions[c.table], chair = tableArtwork(c.table).chairs[c.seatIndex ?? 0];
+  const asset = sceneAssets[chair.asset || "chair"];
+  const chairHeight = chair.width * asset.crop[3] / asset.crop[2];
+  const name = c.type === "regular" && characterVariant(c.name) ? "regular2" : c.type;
+  return {
+    name: chair.foreground ? `${name}Back` : name,
+    x: c.x, seatY: table.y + chair.y + chairHeight * 0.47, height: 122,
+    foreground: !!chair.foreground,
+    mirrored: chair.foreground ? false : name === "regular" ? c.x <= table.x : c.x > table.x
+  };
+}
+
+function seatedMotion(c) {
+  if (reducedSceneMotion || c.state === "preview") return {};
+  const phase = (Number.isFinite(c.id) ? c.id : characterVariant(c.name)) * 1.7;
+  const lively = c.type === "social" && !c.quietFor && c.table !== quietTable;
+  const time = emergenceClock;
+  const sipPhase = (c.timer + phase) % 8;
+  const sip = c.state === "drinking" && !c.repeatPending && sipPhase > 5.5 && sipPhase < 7
+    ? Math.sin((sipPhase - 5.5) / 1.5 * Math.PI) : 0;
+  return { breath: Math.sin(time * 2.2 + phase) * 0.007,
+    sway: Math.sin(time * (lively ? 3.5 : 1.7) + phase) * (lively ? 0.016 : 0.004) - sip * 0.02,
+    sip, drink: c.drink };
+}
+
+function guestBounds(c) {
+  const pose = seatedPose(c), asset = sceneAssets[pose.name];
+  const width = pose.height * asset.crop[2] / asset.crop[3];
+  return { left: c.x - width / 2 - 10, right: c.x + width / 2 + 10,
+    top: pose.seatY - pose.height * 0.57 - 5, bottom: pose.seatY + pose.height * 0.345 + 5 };
+}
+
 function drawCustomerBody(c, context) {
   const carried = tickets.find(t => t.state === "carried" && t.id === c.id);
   if (selectedCustomer === c.id || carried) drawCircle(c.x, c.y, 24, carried ? "#f4d183" : "#fffaf3", context);
-  const seated = isSeated(c) || c.state === "preview";
-  const walking = ["walking", "leaving"].includes(c.state);
-  const name = c.type === "regular" && characterVariant(c.name) ? "regular2" : c.type;
-  const table = tablePositions[c.table];
-  const inwardLeft = c.x > table.x;
-  // The regular's source art faces left; the other guests face right.
-  const mirrored = name === "regular" ? !inwardLeft : inwardLeft;
-  if (seated) {
-    const chair = tableArtwork(c.table).chairs[c.seatIndex];
-    const asset = sceneAssets[chair.asset || "chair"];
-    const chairHeight = chair.width * asset.crop[3] / asset.crop[2];
-    const cushionY = table.y + chair.y + chairHeight * 0.47;
-    // Front-row chairs face into the room: show the guest's back above the
-    // chair backrest. Mirroring a front portrait cannot produce a rear view.
-    const seatedName = chair.foreground ? `${name}Back` : name;
-    drawSeatedCharacter(seatedName, c.x, cushionY, 122, context, chair.foreground ? false : mirrored);
+  if (isSeated(c) || c.state === "preview") {
+    const pose = seatedPose(c);
+    drawSeatedCharacter(pose.name, pose.x, pose.seatY, pose.height, context, pose.mirrored, seatedMotion(c));
     return;
   }
+  const name = c.type === "regular" && characterVariant(c.name) ? "regular2" : c.type;
   const targetX = c.state === "leaving" ? entrance.x : c.targetX;
   const phase = Number.isFinite(c.id) ? c.id * 1.7 : characterVariant(c.name) * 1.7;
   drawCharacter(name, c.x, c.y + 24, 122, context, {
-    phase, walking,
+    phase, walking: ["walking", "leaving"].includes(c.state),
     mirrored: name === "regular" ? targetX >= c.x : targetX < c.x,
     lively: c.type === "social" && !c.quietFor && c.table !== quietTable
   });
 }
 
-function teamMemberPosition(member, index, preview = false) {
-  const isManager = index < 0;
-  const position = isManager ? { x: 890, y: 340 }
-    : member.rest > 0 ? { x: 910, y: 245 + index * 40 }
-    : member.role === "floor" ? { x: 565 + index * 45, y: 260 }
+function staffHome(member, index) {
+  if (index < 0) return { x: 890, y: 340 };
+  if (member.rest > 0) return { x: 910, y: 245 + index * 40 };
+  return member.role === "floor" ? { x: 565 + index * 45, y: 230 }
     : { x: 390 + index * 65, y: 215 };
-  const task = preview ? null : isManager ? managerTask : member.assignment;
+}
+
+function tableServicePoint(index) {
+  const table = tablePositions[index], width = tableArtwork(index).width;
+  return { x: table.x + width / 2 + 36, y: table.y + 45 };
+}
+
+function teamDestination(member, index) {
+  const task = index < 0 ? managerTask : member.assignment;
   const problem = problems.find(p => p.id === task?.problemId);
-  const destination = problem ? problemPosition(problem) : position;
-  return { x: destination.x, y: Math.max(210, destination.y), task };
+  if (problem) {
+    const guest = findCustomer(problem.customerId);
+    if (problem.table != null || guest) return tableServicePoint(problem.table ?? guest.table);
+    return { x: 525, y: 215 };
+  }
+  if (index < 0 && task?.kind === "restock") return { x: 820, y: 230 };
+  const job = member.job;
+  if (job) return job.stage === "pickup" ? { x: 525, y: 215 } : tableServicePoint(job.table);
+  return staffHome(member, index);
+}
+
+// Find an aisle route around the purchased furniture. When a service point is
+// obstructed, stop at the nearest reachable floor tile instead of cutting through it.
+function staffWalkPath(from, destination) {
+  const step = 10, columns = 97, rows = 33;
+  const point = id => ({ x: 20 + id % columns * step, y: 210 + Math.floor(id / columns) * step });
+  const furniture = tablePositions.slice(0, cafe.tables).map(tableFootprint);
+  const open = Array.from({ length: columns * rows }, (_, id) => {
+    const p = point(id);
+    return !furniture.some(bounds => p.x > bounds.left - 4 && p.x < bounds.right + 4 &&
+      p.y > bounds.top - 4 && p.y < bounds.bottom + 4);
+  });
+  const nearest = (target, ids) => ids.reduce((best, id) => {
+    const p = point(id), b = point(best);
+    return Math.hypot(p.x - target.x, p.y - target.y) < Math.hypot(b.x - target.x, b.y - target.y) ? id : best;
+  });
+  const available = open.flatMap((value, id) => value ? [id] : []);
+  if (!available.length) return [{ ...from }];
+  const start = nearest(from, available), queue = [start], previous = new Map([[start, null]]);
+  for (let i = 0; i < queue.length; i++) {
+    const id = queue[i], x = id % columns, y = Math.floor(id / columns);
+    const neighbors = [x > 0 ? id - 1 : -1, x + 1 < columns ? id + 1 : -1,
+      y > 0 ? id - columns : -1, y + 1 < rows ? id + columns : -1];
+    for (const next of neighbors) if (next >= 0 && open[next] && !previous.has(next)) {
+      previous.set(next, id); queue.push(next);
+    }
+  }
+  const end = nearest(destination, queue), path = [];
+  for (let id = end; id != null; id = previous.get(id)) path.push(point(id));
+  return path.reverse();
+}
+
+function moveTeamMember(member, index, dt) {
+  const destination = teamDestination(member, index);
+  const scene = member.scene ||= { ...staffHome(member, index), moving: false, arrived: false, facing: 1 };
+  const key = `${destination.x}:${destination.y}`;
+  if (scene.destination !== key) {
+    scene.destination = key;
+    scene.path = staffWalkPath(scene, destination);
+    scene.arrived = false;
+  }
+  let travel = Math.max(0, dt) * 190 * (member.speed || 1);
+  scene.moving = false;
+  while (travel > 0 && scene.path.length) {
+    const next = scene.path[0], dx = next.x - scene.x, dy = next.y - scene.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance < 0.01) { scene.path.shift(); continue; }
+    const amount = Math.min(travel, distance);
+    if (Math.abs(dx) > 0.1) scene.facing = Math.sign(dx);
+    scene.x += dx / distance * amount; scene.y += dy / distance * amount;
+    scene.moving = true; travel -= amount;
+    if (amount >= distance) scene.path.shift();
+  }
+  scene.arrived = scene.path.length === 0;
+}
+
+function updateTeamMotion(dt) {
+  if (dt <= 0) return;
+  staff.forEach((member, index) => moveTeamMember(member, index, dt));
+  moveTeamMember(managerActor, -1, dt);
+}
+
+function chooseStaffJob(member) {
+  const others = staff.filter(worker => worker !== member);
+  const orderTaken = id => others.some(worker => worker.job?.kind === "order" && worker.job.customerId === id);
+  const drinkTaken = ticket => others.some(worker => worker.job?.tickets?.includes(ticket));
+  const jobs = {
+    order: () => {
+      const guest = customers.find(c => needsDrink(c) && !orderTaken(c.id) && !tickets.some(t => t.id === c.id));
+      return guest && { kind: "order", customerId: guest.id, table: guest.table, stage: "table", time: 0.35 };
+    },
+    deliver: () => {
+      const first = nextServiceTicket("ready", ticket => !drinkTaken(ticket));
+      if (!first) return null;
+      const guest = findCustomer(first.id);
+      const batch = [first, ...tickets.filter(t => t !== first && t.state === "ready" && !drinkTaken(t) &&
+        findCustomer(t.id)?.table === guest.table && needsDrink(findCustomer(t.id)))].slice(0, trayCapacity);
+      return { kind: "deliver", table: guest.table, tickets: batch, stage: "pickup", time: 0.35 };
+    },
+    clean: () => {
+      const booked = reservations.filter(r => ["booked", "blocked"].includes(r.state)).map(r => r.table);
+      const tables = dirtyTables.filter(table => !customers.some(c => c.table === table && stillInside(c)) &&
+        !problems.some(p => p.kind === "spill" && p.table === table) &&
+        !others.some(worker => worker.job?.kind === "clean" && worker.job.table === table));
+      const table = tables.find(t => booked.includes(t)) ?? tables[0];
+      return table != null && { kind: "clean", table, stage: "table", time: 0.7 };
+    }
+  };
+  for (const kind of member.role === "floor" ? ["deliver", "clean", "order"] : ["order", "deliver", "clean"]) {
+    const job = jobs[kind]();
+    if (job) return job;
+  }
+  return null;
+}
+
+function cancelStaffJob(member) {
+  for (const ticket of member.job?.tickets || []) {
+    if (tickets.includes(ticket) && ticket.state === "staff-carried") ticket.state = "ready";
+  }
+  member.job = null;
+}
+
+function updateStaffJob(member, dt) {
+  const job = member.job;
+  if (job.kind === "order") {
+    const guest = findCustomer(job.customerId);
+    if (!needsDrink(guest) || tickets.some(t => t.id === job.customerId)) { cancelStaffJob(member); return; }
+    job.table = guest.table;
+  } else if (job.kind === "deliver") {
+    // References keep claimed tickets distinct from a later refill by the same guest.
+    job.tickets = job.tickets.filter(t => tickets.includes(t) && (job.stage === "pickup" ? t.state === "ready" : t.state === "staff-carried") && needsDrink(findCustomer(t.id)));
+    if (!job.tickets.length) { member.job = null; return; }
+    job.table = findCustomer(job.tickets[0].id).table;
+  } else if (!dirtyTables.includes(job.table) || customers.some(c => c.table === job.table && stillInside(c))) {
+    member.job = null; return;
+  }
+  // If a guest was moved this frame, route to their new table before serving.
+  const target = teamDestination(member, staff.indexOf(member));
+  if (!member.scene?.arrived || member.scene.destination !== `${target.x}:${target.y}`) return;
+  job.time -= dt;
+  if (job.time > 0) return;
+  if (job.stage === "pickup") {
+    job.tickets.forEach(ticket => { ticket.state = "staff-carried"; });
+    job.stage = "table"; job.time = 0.4; member.task = "☕ Delivering";
+    return;
+  }
+  let completed = false;
+  if (job.kind === "order") completed = takeOrder(findCustomer(job.customerId), member);
+  if (job.kind === "deliver") {
+    for (const ticket of job.tickets) {
+      const guest = findCustomer(ticket.id);
+      if (guest.table !== job.table) continue;
+      serve(guest, member); completed = true;
+    }
+  }
+  if (job.kind === "clean" && !problems.some(p => p.kind === "spill" && p.table === job.table)) {
+    dirtyTables = dirtyTables.filter(t => t !== job.table);
+    addEvent(`${member.name} cleaned a table.`); completed = true;
+  }
+  if (completed) member.energy = Math.max(0, member.energy - (job.kind === "deliver" ? 4 + (job.tickets.length - 1) * 2 : 4));
+  cancelStaffJob(member); member.cd = 0.3; member.task = "Ready";
+}
+
+function teamMemberPosition(member, index, preview = false) {
+  const actor = index < 0 ? managerActor : member;
+  const position = !preview && actor.scene ? actor.scene : staffHome(member, index);
+  const task = preview ? null : index < 0 ? managerTask : member.assignment || member.job;
+  return { ...position, task };
 }
 
 function drawTeamMember(member, index, context, preview = false) {
   const isManager = index < 0;
-  const { x, y, task } = teamMemberPosition(member, index, preview);
-  drawCharacter(isManager ? "manager" : index % 2 ? "barista2" : "barista", x, y, 114, context,
-    { phase: index + 3, lively: !preview && !!task });
+  const { x, y, task, moving, facing } = teamMemberPosition(member, index, preview);
+  const sprite = isManager ? "manager" : staffSprite(member);
+  const facesLeft = sprite === "manager" || sprite === "barista";
+  drawCharacter(sprite, x, y, 114, context,
+    { phase: index + 3, walking: !!moving, mirrored: facing ? (facesLeft ? facing > 0 : facing < 0) : false,
+      lively: !preview && !!task && !moving });
   if (!preview && (task || member.rest > 0)) {
-    context.textAlign = "center";
-    context.font = "13px sans-serif";
+    context.textAlign = "center"; context.font = "13px sans-serif";
     drawCircle(x, y - 127, 12, "#fffaf3", context);
     context.fillStyle = "#49372e";
-    context.fillText(member.rest > 0 ? "☕" : "⋯", x, y - 123);
+    const icon = member.rest > 0 ? "☕" : moving ? "→" : task?.kind === "clean" ? "🧽" : task?.kind === "order" ? "✎" : "⋯";
+    context.fillText(icon, x, y - 123);
+  }
+  if (!preview && member.job?.kind === "deliver" && member.job.stage === "table") {
+    drawDrinkIcon(x + 19, y - 49, member.job.tickets[0]?.drink || "latte", 1, context);
+  }
+  const problem = problems.find(p => p.id === task?.problemId);
+  if (!preview && task && !moving) {
+    const cleaning = task.kind === "clean" || problem?.kind === "spill";
+    const prop = cleaning ? "🧽" : task.kind === "order" ? "📝" : problem ? "🔧" : null;
+    if (prop) {
+      const gesture = reducedSceneMotion ? 0 : Math.sin(emergenceClock * 10 + index) * 4;
+      context.font = "15px sans-serif"; context.textAlign = "center";
+      context.fillText(prop, x + 22 + (cleaning ? gesture : 0), y - 45 + (cleaning ? 0 : gesture / 2));
+    }
+  }
+  // A name badge keeps all three employees identifiable at scene scale.
+  if (!isManager) {
+    context.font = "9px sans-serif"; context.textAlign = "center";
+    context.fillStyle = "#fffaf3"; context.fillRect(x - 19, y + 3, 38, 13);
+    context.fillStyle = "#49372e"; context.fillText(member.name, x, y + 13);
   }
 }
 
@@ -3586,7 +3834,7 @@ function drawCustomers() {
       if (showBubble) {
         ctx.font = "12px sans-serif";
         ctx.fillStyle = ready ? "#59633d" : "#98573c";
-        ctx.fillText(lowPatience && !ready ? "!" : !ticket ? "?" : { queued: "◷", brewing: "♨", ready: "✓", carried: "➜" }[ticket.state], bubbleX + 12, bubbleY + 10);
+        ctx.fillText(lowPatience && !ready ? "!" : !ticket ? "?" : { queued: "◷", brewing: "♨", ready: "✓", carried: "➜", "staff-carried": "➜" }[ticket.state], bubbleX + 12, bubbleY + 10);
       }
     } else if (lowMood) ctx.fillText("!", bubbleX, bubbleY + 6);
     if (c.specialKind && selected) {
@@ -3637,7 +3885,7 @@ function drawDraggedParty() {
   const y = Math.max(40, Math.min(sceneSize.height - 25, guestDrag.point.y));
   ctx.save();
   ctx.globalAlpha = 0.8;
-  group.forEach((c, i) => drawCustomerBody({ ...c, x: x + (i - (group.length - 1) / 2) * 22, y }, ctx));
+  group.forEach((c, i) => drawCustomerBody({ ...c, state: "dragging", x: x + (i - (group.length - 1) / 2) * 32, y }, ctx));
   ctx.globalAlpha = 1;
   ctx.fillStyle = "#fffaf3";
   ctx.fillRect(x - 63, y - 48, 126, 21);
@@ -3672,6 +3920,7 @@ function gameLoop(now) {
   }
 
   if (!paused && !guestDrag?.active) {
+    updateTeamMotion(dt);
     updateOperations(dt);
     updateWaiting(dt);
     updateTickets(dt);
@@ -4243,7 +4492,7 @@ function drinkStatus(customer) {
   }
   if(ticket?.state==="brewing"&&problems.some(p=>p.kind==="machine"))return prefix + "Brewing paused · fix machine";
   return prefix + (!ticket ? "◷ Waiting to order" : {
-    queued: "◷ Queued", brewing: "♨ Brewing", ready: "✓ Ready", carried: "➜ You are carrying it"
+    queued: "◷ Queued", brewing: "♨ Brewing", ready: "✓ Ready", carried: "➜ You are carrying it", "staff-carried": "➜ Staff are bringing it"
   }[ticket.state]);
 }
 
